@@ -1,4 +1,4 @@
-# Alterna
+# YADcras Park
 
 Reserva y gestión de puestos de oficina para el esquema híbrido de **3 días presenciales y 2 de home office**. Funciona en el navegador de la computadora y del celular (se puede instalar como app desde el navegador).
 
