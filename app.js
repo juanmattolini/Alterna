@@ -295,7 +295,24 @@ function renderOcupacion(){const cap=capacity();const days=rangeDays();const wk=
   const upcoming=counts.filter(c=>c.d>=todayStr).reduce((s,c)=>s+c.v,0);
   $("#occTiles").innerHTML=[["Puestos activos",cap,S.cfg.zones.length+" zonas"],["Ocupación semana actual",avg+"%","promedio de lunes a viernes"],["Día más cargado",peak.v<0?"–":DAYN[(parse(peak.d).getDay()+6)%7]+" "+parse(peak.d).getDate(),peak.v<0?"":peak.v+" reservas"],["Reservas próximas",upcoming,"en las próximas "+S.cfg.horizonWeeks+" semanas"]]
     .map(t=>'<div class="tile"><div class="k">'+t[0]+'</div><div class="v">'+esc(t[1])+'</div><div class="h">'+esc(t[2])+'</div></div>').join("");
-  bars(counts.map(c=>({label:DAYN[(parse(c.d).getDay()+6)%7]+" "+parse(c.d).getDate()+"/"+(parse(c.d).getMonth()+1),v:c.v})),cap,$("#occChart"));}
+  bars(counts.map(c=>({label:DAYN[(parse(c.d).getDay()+6)%7]+" "+parse(c.d).getDate()+"/"+(parse(c.d).getMonth()+1),v:c.v})),cap,$("#occChart"));
+  renderCompliance();}
+/* who booked their office days for a week (admins only) */
+let compWeek=null,compTeam="";
+function compRows(){const days=weekDays(compWeek);const goal=Math.min(S.cfg.officeDays,days.filter(d=>!closedOn(d)).length);
+  return S.people.filter(pp=>!compTeam||(pp.team_id||"none")===compTeam).map(pp=>{const mine=days.map(d=>[...S.bookings.values()].find(b=>b.date===d&&b.userId===pp.id));const n=mine.filter(Boolean).length;
+    return {pp,mine,n,goal,team:S.cfg.teams.find(t=>t.id===pp.team_id)}}).sort((a,b)=>(a.n>=a.goal)-(b.n>=b.goal)||a.n-b.n||String(a.pp.full_name).localeCompare(b.pp.full_name))}
+function renderCompliance(){const box=$("#compPanel");box.hidden=!S.canEdit;if(!S.canEdit)return;
+  const weeks=[];for(let w=weekDays(0)[4]<todayStr&&S.cfg.horizonWeeks>1?1:0;w<S.cfg.horizonWeeks;w++)weeks.push(w);
+  if(compWeek===null||!weeks.includes(compWeek))compWeek=weeks[0];
+  $("#compWeek").innerHTML=weeks.map(w=>{const d=weekDays(w);return '<option value="'+w+'"'+(w===compWeek?" selected":"")+'>Semana del '+shortDay(d[0])+'</option>'}).join("");
+  $("#compTeam").innerHTML='<option value="">Todos los equipos</option>'+S.cfg.teams.map(t=>'<option value="'+esc(t.id)+'"'+(t.id===compTeam?" selected":"")+'>'+esc(t.name)+'</option>').join("")+'<option value="none"'+(compTeam==="none"?" selected":"")+'>Sin equipo</option>';
+  const rows=compRows();const ok=rows.filter(r=>r.n>=r.goal).length;const days=weekDays(compWeek);
+  $("#compSum").innerHTML='<b>'+ok+' de '+rows.length+'</b> '+(rows.length===1?"persona cargó":"personas cargaron")+' sus '+(rows[0]?rows[0].goal:S.cfg.officeDays)+' días'+(rows.length-ok?'. Faltan <b>'+(rows.length-ok)+'</b>.':'. ¡Están todos!');
+  $("#compBar").style.width=(rows.length?ok/rows.length*100:0)+"%";
+  $("#compRows").innerHTML=rows.map(r=>{const done=r.n>=r.goal;
+    return '<tr><td><span class="person">'+avatar(r.pp.id,r.pp.full_name)+'<span>'+esc(r.pp.full_name||"Sin nombre")+'</span></span></td><td class="hide-sm">'+esc(r.team?r.team.name:"Sin equipo")+'</td><td><div class="cdays">'+days.map((d,i)=>{const b=r.mine[i];const cl=closedOn(d);return '<span class="cd'+(b?" on":cl?" cl":"")+'" title="'+esc(fmtDay(d))+(b?": "+b.deskId:cl?": cerrado":": sin reserva")+'">'+DAYN[i][0]+'</span>'}).join("")+'</div></td><td><span class="badge '+(done?"ok":"miss")+'">'+(done?ic("check","xs")+"Completo":"Faltan "+(r.goal-r.n))+'</span></td></tr>'}).join("")||'<tr><td colspan="4" class="sub">No hay personas en este filtro.</td></tr>';}
+
 
 /* ---------- optimizer ---------- */
 const COMBOS=(k=>{const out=[];const rec=(s,a)=>{if(a.length===k){out.push(a);return}for(let i=s;i<5;i++)rec(i+1,a.concat(i))};rec(0,[]);return out});
@@ -375,6 +392,12 @@ $("#myName").addEventListener("change",async e=>{const n=e.target.value.trim();i
   try{await store.updatePerson(S.me.id,{full_name:n});S.me.name=n;S.names[S.me.id]=n;toast("Nombre actualizado.");render()}catch(x){toast("No pudimos guardar tu nombre. Probá de nuevo.")}});
 $("#recDesk").addEventListener("change",e=>{recDraft.deskId=e.target.value;renderRecurring()});
 $("#recSave").addEventListener("click",saveRecurring);
+$("#compWeek").addEventListener("change",e=>{compWeek=+e.target.value;renderCompliance()});
+$("#compTeam").addEventListener("change",e=>{compTeam=e.target.value;renderCompliance()});
+$("#compCopy").addEventListener("click",async()=>{const rows=compRows().filter(r=>r.n<r.goal);const d=weekDays(compWeek);
+  if(!rows.length){toast("Todos cargaron sus días de esa semana.");return}
+  const txt="Recordatorio: cargá tus días de oficina de la semana del "+shortDay(d[0])+" en YADcras Park.\n"+rows.map(r=>"• "+(r.pp.full_name||"Sin nombre")+": "+(r.n?"tiene "+r.n+" de "+r.goal:"no cargó ningún día")).join("\n")+"\n"+location.href.split("#")[0];
+  try{await navigator.clipboard.writeText(txt);toast("Copiamos la lista de "+rows.length+" "+(rows.length===1?"persona":"personas")+". Pegala en WhatsApp o en un mail.")}catch(e){sheet('<h3>Lista de pendientes</h3><textarea readonly style="width:100%;min-height:180px">'+esc(txt)+'</textarea><div class="row"><span class="spacer"></span><button class="btn primary" data-close>Listo</button></div>')}});
 document.querySelectorAll("[data-myview]").forEach(b=>b.addEventListener("click",()=>{S.myView=b.dataset.myview;try{localStorage.setItem("alterna:myview",S.myView)}catch(e){}renderMias()}));
 $("#myPrev").addEventListener("click",()=>{if(S.myMonth>MIN_MONTH){S.myMonth=shiftMonth(S.myMonth,-1);renderMias()}});
 $("#myNext").addEventListener("click",()=>{if(S.myMonth<MAX_MONTH){S.myMonth=shiftMonth(S.myMonth,1);renderMias()}});

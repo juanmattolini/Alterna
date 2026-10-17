@@ -257,6 +257,15 @@ a:focus-visible,.desk:focus-visible,.day:focus-visible,[role=tab]:focus-visible{
 .day.open .free{display:flex;align-items:center;gap:4px;color:var(--accent);font-weight:600}
 .day .why .ic.xs{vertical-align:-2px}
 details.hol{margin-top:6px}
+.cdays{display:flex;gap:3px}
+.cd{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;font-size:11px;font-weight:700;border:1px solid var(--line);color:var(--muted)}
+.cd.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.cd.cl{background:repeating-linear-gradient(135deg,var(--accent-soft),var(--accent-soft) 3px,transparent 3px,transparent 6px)}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.badge.ok{background:var(--accent-soft);color:var(--accent)}
+.badge.miss{background:var(--warn-soft);color:var(--warn)}
+@media (max-width:480px){#compRows td,#compPanel th{padding-left:4px;padding-right:4px}.cd{width:19px;height:21px;font-size:10px;border-radius:5px}.cdays{gap:2px}.badge{padding:2px 6px;font-size:11px}#compRows .person>span:last-child{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#compRows .avatar{display:none}}
+.cbar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}.cbar i{display:block;height:100%;background:var(--accent);transition:width .3s}
 details.hol summary{cursor:pointer;font-weight:600;padding:8px 0;color:var(--ink)}
 details.hol .list{margin-top:6px}
 @media (max-width:480px){.days.cal{gap:5px}.days.cal .day{padding:6px 5px;gap:2px}.days.cal .day .why{display:none}.days.cal .day .free{font-size:10px}.days.cal .day .free .ic{display:none}.day.booked .tag{font-size:9px;padding:1px 3px}.days .dhead{padding:0 4px;font-size:11px}}
@@ -429,6 +438,14 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
       <div><h2>Reservas por día</h2><p class="sub">Puestos reservados frente a la capacidad total. La línea marca la capacidad.</p></div>
       <div class="chart" id="occChart"></div>
     </div>
+    <div class="panel" id="compPanel" style="display:grid;gap:12px" hidden>
+      <div class="row"><div class="grow"><h2>¿Quiénes cargaron sus días?</h2><p class="sub">Cumplimiento del esquema por persona. Solo lo ven los administradores.</p></div>
+        <button class="btn" id="compCopy" type="button"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg>Copiar pendientes</button></div>
+      <div class="row"><label class="field" for="compWeek" style="flex:1 1 180px">Semana<select id="compWeek"></select></label><label class="field" for="compTeam" style="flex:1 1 180px">Equipo<select id="compTeam"></select></label></div>
+      <p id="compSum" role="status"></p>
+      <div class="cbar" aria-hidden="true"><i id="compBar"></i></div>
+      <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Persona</th><th class="hide-sm">Equipo</th><th>Días</th><th>Estado</th></tr></thead><tbody id="compRows"></tbody></table></div>
+    </div>
   </section>
 
   <section class="view" role="tabpanel" aria-labelledby="tab-plan" id="v-plan" hidden>
@@ -482,9 +499,9 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
 <div id="sheetHost"></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="vendor/supabase-2.117.2.js?v=20261017e"></script>
-<script src="icons.js?v=20261017e"></script>
-<script src="config.js?v=20261017e"></script>
-<script src="app.js?v=20261017e"></script>
+<script src="vendor/supabase-2.117.2.js?v=20261017f"></script>
+<script src="icons.js?v=20261017f"></script>
+<script src="config.js?v=20261017f"></script>
+<script src="app.js?v=20261017f"></script>
 </body>
 </html>
