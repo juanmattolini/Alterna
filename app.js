@@ -3,7 +3,7 @@
 const DAYN=["Lun","Mar","Mié","Jue","Vie"];
 const DAYL=["lunes","martes","miércoles","jueves","viernes"];
 const MON=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
-const DEFAULT_CFG={officeDays:3,horizonWeeks:3,offAnchor:"allow",closures:{},closureKinds:{},
+const DEFAULT_CFG={officeDays:3,horizonDays:14,offAnchor:"allow",closures:{},closureKinds:{},
   zones:[{id:"N",name:"Zona Norte",desks:16,off:""},{id:"S",name:"Zona Sur",desks:16,off:""},{id:"Q",name:"Sala silenciosa",desks:8,off:""}],
   teams:[]};
 const EXAMPLE_TEAMS=[["Producto",12],["Tecnología",18],["Comercial",14],["Operaciones",10],["Finanzas",6],["Personas",4]];
@@ -39,7 +39,7 @@ function sbStore(sb,uid){
   async function loadCfg(){
     const [c,z,t,cl]=await Promise.all([sb.from("office_config").select("*").eq("id",1).maybeSingle(),sb.from("zones").select("*").order("sort"),sb.from("teams").select("*").order("created_at"),sb.from("closures").select("date,reason,kind").order("date")]);
     [c,z,t,cl].forEach(fail);
-    const cfg={officeDays:c.data?c.data.office_days:3,horizonWeeks:c.data?c.data.horizon_weeks:3,offAnchor:c.data?c.data.off_anchor:"allow",
+    const cfg={officeDays:c.data?c.data.office_days:3,horizonDays:c.data?(c.data.horizon_days||c.data.horizon_weeks*7):14,offAnchor:c.data?c.data.off_anchor:"allow",
       zones:z.data.map(r=>({id:r.id,name:r.name,desks:r.desks,off:(r.off_desks||[]).join(", "),layout:r.layout||""})),
       teams:t.data.map(r=>({id:r.id,name:r.name,people:r.people,days:(r.days||[]).slice().sort()})),
       closures:Object.fromEntries(cl.data.map(r=>[r.date,r.reason])),closureKinds:Object.fromEntries(cl.data.map(r=>[r.date,r.kind||"cierre"]))};
@@ -63,7 +63,7 @@ function sbStore(sb,uid){
       if(r.error){if(r.error.code==="23505"){rb();return false}throw r.error}rb();return true},
     async cancel(id){fail(await sb.from("bookings").delete().eq("id",id));rb()},
     async saveConfig(c){const prev=cfgCache||{zones:[],teams:[]};
-      fail(await sb.from("office_config").update({office_days:c.officeDays,horizon_weeks:c.horizonWeeks,off_anchor:c.offAnchor,updated_at:new Date().toISOString()}).eq("id",1));
+      fail(await sb.from("office_config").update({office_days:c.officeDays,horizon_days:c.horizonDays,off_anchor:c.offAnchor,updated_at:new Date().toISOString()}).eq("id",1));
       const zrows=c.zones.map((z,i)=>({id:z.id,name:z.name,desks:tablesOf(z).length?tablesOf(z).reduce((a,b)=>a+b,0):z.desks,layout:tablesOf(z).join(","),off_desks:String(z.off||"").split(/[ ,;]+/).filter(Boolean).map(Number).filter(n=>n>0),sort:i}));
       if(zrows.length)fail(await sb.from("zones").upsert(zrows));
       const zdel=prev.zones.map(z=>z.id).filter(id=>!c.zones.some(z=>z.id===id));if(zdel.length)fail(await sb.from("zones").delete().in("id",zdel));
@@ -87,13 +87,16 @@ let store=null,sb=null;
 
 
 /* ---------- derived ---------- */
-function rangeDays(){const out=[];for(let w=weekDays(0)[4]<todayStr&&S.cfg.horizonWeeks>1?1:0;w<S.cfg.horizonWeeks;w++)for(let i=0;i<5;i++)out.push(ymd(addDays(thisMon,w*7+i)));return out}
+function rangeDays(){const out=[];for(let w=weekDays(0)[4]<todayStr&&hWeeks()>1?1:0;w<hWeeks();w++)for(let i=0;i<5;i++)out.push(ymd(addDays(thisMon,w*7+i)));return out}
 function weekDays(w){return [0,1,2,3,4].map(i=>ymd(addDays(thisMon,w*7+i)))}
 function shownDays(){if(!S.cal)return weekDays(S.week);return monthWeeks(S.month).flat().filter(Boolean)}
 const weekOf=d=>Math.floor((parse(d)-thisMon)/864e5/7);
-const horizonEnd=()=>ymd(addDays(thisMon,S.cfg.horizonWeeks*7));
+const horizonEnd=()=>ymd(addDays(parse(todayStr),S.cfg.horizonDays));
+/* weeks (from this Monday) that contain bookable days */
+const hWeeks=()=>Math.max(1,Math.ceil((parse(horizonEnd())-thisMon)/864e5/7));
 const inHorizon=d=>d>=todayStr&&d<horizonEnd();
-const opensOn=d=>{const o=addDays(monday(parse(d)),-(S.cfg.horizonWeeks-1)*7);return ymd(o)<todayStr?todayStr:ymd(o)};
+const opensOn=d=>{const o=ymd(addDays(parse(d),-(S.cfg.horizonDays-1)));return o<todayStr?todayStr:o};
+const horizonTxt=()=>S.cfg.horizonDays+(S.cfg.horizonDays===1?" día":" días");
 const MIN_MONTH=todayStr.slice(0,7),MAX_MONTH="2027-12";
 const MONL=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const monthLabel=ym=>MONL[+ym.slice(5)-1]+" "+ym.slice(0,4);
@@ -168,9 +171,9 @@ function renderDays(){const anc=anchorIdx();let days;
     $("#prevW").setAttribute("aria-label","Mes anterior");$("#nextW").setAttribute("aria-label","Mes siguiente");
     if(!S.selDay||S.selDay.slice(0,7)!==S.month)S.selDay=days.find(d=>inHorizon(d)&&!closedOn(d))||days.find(d=>d>=todayStr)||days[0];
     $("#days").innerHTML=DHEAD+monthWeeks(S.month).map(w=>w.map(d=>d?dayCell(d):BLANK).join("")).join("");
-  }else{S.week=Math.max(0,Math.min(S.week,S.cfg.horizonWeeks-1));days=weekDays(S.week);
+  }else{S.week=Math.max(0,Math.min(S.week,hWeeks()-1));days=weekDays(S.week);
     $("#weekLabel").textContent=shortDay(days[0])+" al "+shortDay(days[4]);
-    $("#prevW").disabled=S.week<=0;$("#nextW").disabled=S.week>=S.cfg.horizonWeeks-1;
+    $("#prevW").disabled=S.week<=0;$("#nextW").disabled=S.week>=hWeeks()-1;
     $("#prevW").setAttribute("aria-label","Semana anterior");$("#nextW").setAttribute("aria-label","Semana siguiente");
     if(!S.selDay||!days.includes(S.selDay))S.selDay=days.find(d=>d>=todayStr&&!closedOn(d))||days.find(d=>d>=todayStr)||days[0];
     $("#days").innerHTML=days.map(dayCell).join("");}
@@ -183,7 +186,7 @@ function renderZones(){const d=S.selDay;const taken=new Map(bookingsOn(d).map(b=
   const di=(parse(d).getDay()+6)%7;const anc=anchorIdx();
   $("#planTitle").textContent="Plano del "+fmtDay(d);
   if(closedOn(d)){const k=kindOf(d);$("#planSub").textContent="No se puede reservar este día.";$("#zones").innerHTML='<div class="empty" style="grid-column:1/-1">'+ic(k==="cierre"?"calendar-x":"party-popper","big")+'<b>'+(k==="feriado"?"Feriado: la oficina está cerrada":k==="no_laborable"?"Día no laborable: la oficina está cerrada":"La oficina está cerrada")+'</b><span>'+esc(closedOn(d))+'</span></div>';return}
-  if(!past&&!inHorizon(d)){$("#planSub").textContent="Todavía no se puede reservar este día.";$("#zones").innerHTML='<div class="empty" style="grid-column:1/-1">'+ic("calendar-days","big")+'<b>La reserva se abre el '+esc(fmtDay(opensOn(d)))+'</b><span>Se puede reservar hasta '+S.cfg.horizonWeeks+' semanas adelante.</span></div>';return}
+  if(!past&&!inHorizon(d)){$("#planSub").textContent="Todavía no se puede reservar este día.";$("#zones").innerHTML='<div class="empty" style="grid-column:1/-1">'+ic("calendar-days","big")+'<b>La reserva se abre el '+esc(fmtDay(opensOn(d)))+'</b><span>Se puede reservar hasta '+horizonTxt()+' adelante.</span></div>';return}
   $("#planSub").textContent=past?"Este día ya pasó.":mine?"Tenés el puesto "+mine.deskId+". Tocalo para liberarlo.":(anc.length&&!anc.includes(di)?"No es un día ancla de tu equipo. ":"")+"Elegí un puesto libre para reservarlo.";
   const all=desksOf(S.cfg);
   const seat=x=>{
@@ -251,11 +254,11 @@ function renderRecurring(){const k=S.cfg.officeDays;const rule=S.rec;
   sel.innerHTML=S.cfg.zones.map(z=>'<optgroup label="'+esc(z.name)+'">'+activeDesks().filter(x=>x.zone===z.id).map(x=>'<option value="'+x.id+'">'+x.id+'</option>').join("")+'</optgroup>').join("");
   sel.value=prev;if(sel.value!==prev&&sel.options.length){recDraft.deskId=sel.value}
   const dirty=!rule||rule.deskId!==recDraft.deskId||rule.days.join()!==recDraft.days.join();
-  $("#recStatus").innerHTML=rule?ic("repeat")+'<span>Activa: todos los <b>'+rule.days.map(i=>DAYL[i]).join(", ")+'</b> en <b>'+esc(rule.deskId)+'</b>. Se reserva sola hasta '+S.cfg.horizonWeeks+' semanas adelante.</span>':'<span>No tenés reserva recurrente.</span>';
+  $("#recStatus").innerHTML=rule?ic("repeat")+'<span>Activa: todos los <b>'+rule.days.map(i=>DAYL[i]).join(", ")+'</b> en <b>'+esc(rule.deskId)+'</b>. Se reserva sola hasta '+horizonTxt()+' adelante.</span>':'<span>No tenés reserva recurrente.</span>';
   $("#recSave").disabled=!recDraft.days.length||!recDraft.deskId||!dirty;$("#recSave").lastChild.textContent=rule?"Guardar cambios":"Activar reserva recurrente";
   $("#recOff").hidden=!rule;}
 async function saveRecurring(){try{const n=await store.saveRecurring(recDraft);S.rec=clone(recDraft);recDraft=null;
-    toast(n?"Listo. Reservamos "+n+" "+(n===1?"día":"días")+" de acá a "+S.cfg.horizonWeeks+" semanas.":"Reserva recurrente guardada. No había días nuevos para reservar.");render()}
+    toast(n?"Listo. Reservamos "+n+" "+(n===1?"día":"días")+" en los próximos "+horizonTxt()+".":"Reserva recurrente guardada. No había días nuevos para reservar.");render()}
   catch(e){toast("No pudimos guardar la reserva recurrente. Revisá tu conexión y probá de nuevo.")}}
 async function stopRecurring(){sheet('<h3>Desactivar reserva recurrente</h3><p class="sub">Las próximas semanas ya no se van a reservar solas. Las reservas que ya tenés se mantienen; podés liberarlas desde la lista.</p><div class="row"><span class="spacer"></span><button class="btn ghost" data-close>Volver</button><button class="btn danger" id="okOff">Desactivar</button></div>',
   close=>$("#okOff").addEventListener("click",async()=>{close();try{await store.deleteRecurring();S.rec=null;recDraft=null;toast("Desactivaste la reserva recurrente.");render()}catch(e){toast("No pudimos desactivarla. Probá de nuevo.")}}))}
@@ -293,7 +296,7 @@ function renderOcupacion(){const cap=capacity();const days=rangeDays();const wk=
   const counts=days.map(d=>({d,v:bookingsOn(d).length}));const wkc=counts.filter(c=>wk.includes(c.d));
   const avg=cap?Math.round(wkc.reduce((s,c)=>s+c.v,0)/(5*cap)*100):0;const peak=wkc.reduce((a,c)=>c.v>a.v?c:a,{v:-1,d:wk[0]});
   const upcoming=counts.filter(c=>c.d>=todayStr).reduce((s,c)=>s+c.v,0);
-  $("#occTiles").innerHTML=[["Puestos activos",cap,S.cfg.zones.length+" zonas"],["Ocupación semana actual",avg+"%","promedio de lunes a viernes"],["Día más cargado",peak.v<0?"–":DAYN[(parse(peak.d).getDay()+6)%7]+" "+parse(peak.d).getDate(),peak.v<0?"":peak.v+" reservas"],["Reservas próximas",upcoming,"en las próximas "+S.cfg.horizonWeeks+" semanas"]]
+  $("#occTiles").innerHTML=[["Puestos activos",cap,S.cfg.zones.length+" zonas"],["Ocupación semana actual",avg+"%","promedio de lunes a viernes"],["Día más cargado",peak.v<0?"–":DAYN[(parse(peak.d).getDay()+6)%7]+" "+parse(peak.d).getDate(),peak.v<0?"":peak.v+" reservas"],["Reservas próximas",upcoming,"en los próximos "+horizonTxt()]]
     .map(t=>'<div class="tile"><div class="k">'+t[0]+'</div><div class="v">'+esc(t[1])+'</div><div class="h">'+esc(t[2])+'</div></div>').join("");
   bars(counts.map(c=>({label:DAYN[(parse(c.d).getDay()+6)%7]+" "+parse(c.d).getDate()+"/"+(parse(c.d).getMonth()+1),v:c.v})),cap,$("#occChart"));
   renderCompliance();}
@@ -303,7 +306,7 @@ function compRows(){const days=weekDays(compWeek);const goal=Math.min(S.cfg.offi
   return S.people.filter(pp=>!compTeam||(pp.team_id||"none")===compTeam).map(pp=>{const mine=days.map(d=>[...S.bookings.values()].find(b=>b.date===d&&b.userId===pp.id));const n=mine.filter(Boolean).length;
     return {pp,mine,n,goal,team:S.cfg.teams.find(t=>t.id===pp.team_id)}}).sort((a,b)=>(a.n>=a.goal)-(b.n>=b.goal)||a.n-b.n||String(a.pp.full_name).localeCompare(b.pp.full_name))}
 function renderCompliance(){const box=$("#compPanel");box.hidden=!S.canEdit;if(!S.canEdit)return;
-  const weeks=[];for(let w=weekDays(0)[4]<todayStr&&S.cfg.horizonWeeks>1?1:0;w<S.cfg.horizonWeeks;w++)weeks.push(w);
+  const weeks=[];for(let w=weekDays(0)[4]<todayStr&&hWeeks()>1?1:0;w<hWeeks();w++)weeks.push(w);
   if(compWeek===null||!weeks.includes(compWeek))compWeek=weeks[0];
   $("#compWeek").innerHTML=weeks.map(w=>{const d=weekDays(w);return '<option value="'+w+'"'+(w===compWeek?" selected":"")+'>Semana del '+shortDay(d[0])+'</option>'}).join("");
   $("#compTeam").innerHTML='<option value="">Todos los equipos</option>'+S.cfg.teams.map(t=>'<option value="'+esc(t.id)+'"'+(t.id===compTeam?" selected":"")+'>'+esc(t.name)+'</option>').join("")+'<option value="none"'+(compTeam==="none"?" selected":"")+'>Sin equipo</option>';
@@ -349,7 +352,7 @@ function renderPlan(){const cap=capacity();const k=S.cfg.officeDays;const teams=
 /* ---------- render: config ---------- */
 let cfgDraft=null;
 function renderConfig(){cfgDraft=cfgDraft||clone(S.cfg);const ed=S.canEdit;
-  $("#cfgDays").value=cfgDraft.officeDays;$("#cfgHorizon").value=cfgDraft.horizonWeeks;$("#cfgOffAnchor").value=cfgDraft.offAnchor||"allow";
+  $("#cfgDays").value=cfgDraft.officeDays;$("#cfgHorizon").value=cfgDraft.horizonDays;$("#cfgOffAnchor").value=cfgDraft.offAnchor||"allow";
   ["#cfgDays","#cfgHorizon","#cfgOffAnchor","#addZone","#saveCfg"].forEach(s=>$(s).disabled=!ed);
   $("#zoneRows").innerHTML=cfgDraft.zones.map((z,i)=>'<tr data-i="'+i+'"><td><input type="text" id="zc-'+i+'" data-f="id" value="'+esc(z.id)+'" maxlength="3" style="width:64px" aria-label="Código"'+(ed?"":" disabled")+'></td><td><input type="text" id="zn-'+i+'" data-f="name" value="'+esc(z.name)+'" aria-label="Nombre"'+(ed?"":" disabled")+'></td><td><input type="text" id="zl-'+i+'" data-f="layout" value="'+esc(tablesOf(z).join(", "))+'" placeholder="ej. 8, 2, 2" style="width:120px" aria-label="Mesas y lugares de cada una"'+(ed?"":" disabled")+'></td><td><input type="number" id="zd-'+i+'" data-f="desks" min="0" max="200" value="'+(tablesOf(z).length?tablesOf(z).reduce((a,b)=>a+b,0):z.desks)+'" aria-label="Puestos"'+(ed&&!tablesOf(z).length?"":" disabled")+(tablesOf(z).length?' title="Se calcula con las mesas"':"")+'></td><td><input type="text" id="zo-'+i+'" data-f="off" value="'+esc(z.off||"")+'" placeholder="ej. 3, 7" aria-label="Puestos fuera de servicio"'+(ed?"":" disabled")+'></td><td>'+(ed?'<button class="btn ghost danger" data-del aria-label="Quitar zona">'+ic("trash-2")+'<span class="hide-sm">Quitar</span></button>':"")+'</td></tr>').join("");
   $("#zoneRows").querySelectorAll("input").forEach(inp=>inp.addEventListener("change",()=>{const z=cfgDraft.zones[+inp.closest("tr").dataset.i];const f=inp.dataset.f;if(f==="layout")setTimeout(()=>{const t=tablesOf(z);if(t.length)z.desks=t.reduce((a,b)=>a+b,0);renderConfig()});
@@ -385,7 +388,7 @@ $("#tabs").addEventListener("keydown",e=>{const tabs=[...document.querySelectorA
 $("#pickTeam").addEventListener("click",()=>{setTab("mias");$("#myTeam").focus()});
 document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>{S.cal=b.dataset.view==="cal";if(S.cal&&S.selDay)S.month=S.selDay.slice(0,7);try{localStorage.setItem("alterna:cal",S.cal?"cal":"week")}catch(e){}renderReservar()}));
 $("#prevW").addEventListener("click",()=>{if(S.cal){if(S.month>MIN_MONTH){S.month=shiftMonth(S.month,-1);S.selDay=null;renderReservar()}}else if(S.week>0){S.week--;S.selDay=null;renderReservar()}});
-$("#nextW").addEventListener("click",()=>{if(S.cal){if(S.month<MAX_MONTH){S.month=shiftMonth(S.month,1);S.selDay=null;renderReservar()}}else if(S.week<S.cfg.horizonWeeks-1){S.week++;S.selDay=null;renderReservar()}});
+$("#nextW").addEventListener("click",()=>{if(S.cal){if(S.month<MAX_MONTH){S.month=shiftMonth(S.month,1);S.selDay=null;renderReservar()}}else if(S.week<hWeeks()-1){S.week++;S.selDay=null;renderReservar()}});
 $("#autoBtn").addEventListener("click",autoBook);
 $("#myTeam").addEventListener("change",async e=>{S.profile={...S.profile,teamId:e.target.value};try{await store.saveProfile(S.profile);await loadPeople()}catch(x){toast("No pudimos guardar tu equipo. Probá de nuevo.")}render()});
 $("#myName").addEventListener("change",async e=>{const n=e.target.value.trim();if(!n)return;
@@ -411,7 +414,7 @@ $("#clForm").addEventListener("submit",e=>{e.preventDefault();const d=$("#clDate
 $("#addTeam").addEventListener("click",()=>{S.draft=S.draft||clone(S.cfg.teams);S.draft.push({id:uidGen(),name:"Nuevo equipo",people:5,days:COMBOS(S.cfg.officeDays)[0].slice()});renderPlan()});
 $("#optimize").addEventListener("click",()=>{const src=S.draft||S.cfg.teams;const before=Math.max(0,...loadOf(src));S.draft=optimize(clone(src),S.cfg.officeDays);const after=Math.max(0,...loadOf(S.draft));
   renderPlan();toast(after<before?"El pico baja de "+before+" a "+after+" personas. Revisá y guardá.":"La distribución ya era óptima ("+after+" personas en el pico).")});
-["#cfgDays","#cfgHorizon","#cfgOffAnchor"].forEach(s=>$(s).addEventListener("change",()=>{cfgDraft.officeDays=Math.max(1,Math.min(5,+$("#cfgDays").value||3));cfgDraft.horizonWeeks=Math.max(1,Math.min(8,+$("#cfgHorizon").value||3));cfgDraft.offAnchor=$("#cfgOffAnchor").value;renderConfig()}));
+["#cfgDays","#cfgHorizon","#cfgOffAnchor"].forEach(s=>$(s).addEventListener("change",()=>{cfgDraft.officeDays=Math.max(1,Math.min(5,+$("#cfgDays").value||3));cfgDraft.horizonDays=Math.max(1,Math.min(120,+$("#cfgHorizon").value||14));cfgDraft.offAnchor=$("#cfgOffAnchor").value;renderConfig()}));
 $("#addZone").addEventListener("click",()=>{cfgDraft.zones.push({id:"Z"+(cfgDraft.zones.length+1),name:"Nueva zona",desks:8,off:""});renderConfig()});
 $("#saveCfg").addEventListener("click",async()=>{const ids=cfgDraft.zones.map(z=>z.id);if(new Set(ids).size!==ids.length){toast("Cada zona necesita un código distinto.");return}
   const c={...cfgDraft};if(c.officeDays!==S.cfg.officeDays)c.teams=S.cfg.teams.map(t=>({...t,days:t.days.slice(0,c.officeDays).concat(COMBOS(c.officeDays)[0].filter(d=>!t.days.includes(d))).slice(0,c.officeDays).sort()}));else c.teams=S.cfg.teams;
@@ -426,7 +429,7 @@ async function loadPeople(){try{S.people=await store.loadPeople();S.names={};S.p
 let namesPending=false;
 async function resolveNames(){if(namesPending)return;const miss=[...S.bookings.values()].some(b=>b.userId&&!(b.userId in S.names));
   if(!miss)return;namesPending=true;await loadPeople();namesPending=false;render()}
-function onConfig(c){S.cfg={...clone(DEFAULT_CFG),...(c||{})};if(!Array.isArray(S.cfg.teams))S.cfg.teams=[];if(S.week>S.cfg.horizonWeeks-1)S.week=Math.min(S.week,S.cfg.horizonWeeks-1);startWatch();render()}
+function onConfig(c){S.cfg={...clone(DEFAULT_CFG),...(c||{})};if(!Array.isArray(S.cfg.teams))S.cfg.teams=[];if(S.week>hWeeks()-1)S.week=Math.min(S.week,hWeeks()-1);startWatch();render()}
 function colorFor(id){let h=0;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))%360;return "hsl("+h+" 45% 32%)"}
 
 /* ---------- auth ---------- */
