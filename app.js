@@ -24,6 +24,8 @@ const S={cfg:clone(DEFAULT_CFG),bookings:new Map(),me:{id:null,name:"Tú",color:
   profile:{teamId:""},names:{},people:[],week:0,cal:(()=>{try{return localStorage.getItem("alterna:cal")!=="week"}catch(e){return true}})(),selDay:null,month:todayStr.slice(0,7),myMonth:todayStr.slice(0,7),myView:(()=>{try{return localStorage.getItem("alterna:myview")||"cal"}catch(e){return "cal"}})(),tab:"reservar",draft:null,busy:false};
 
 /* ---------- desks ---------- */
+/* table capacities of a zone, e.g. "8,2,2" -> [8,2,2]; empty means a plain grid */
+const tablesOf=z=>String(z.layout||"").split(/[ ,;]+/).map(Number).filter(n=>n>0&&n<=40);
 function desksOf(cfg){const out=[];for(const z of cfg.zones){const off=new Set(String(z.off||"").split(/[ ,;]+/).filter(Boolean).map(Number));
   for(let i=1;i<=Math.max(0,+z.desks||0);i++)out.push({id:z.id+"-"+pad(i),zone:z.id,n:i,off:off.has(i)});}return out}
 const activeDesks=()=>desksOf(S.cfg).filter(d=>!d.off);
@@ -38,7 +40,7 @@ function sbStore(sb,uid){
     const [c,z,t,cl]=await Promise.all([sb.from("office_config").select("*").eq("id",1).maybeSingle(),sb.from("zones").select("*").order("sort"),sb.from("teams").select("*").order("created_at"),sb.from("closures").select("date,reason,kind").order("date")]);
     [c,z,t,cl].forEach(fail);
     const cfg={officeDays:c.data?c.data.office_days:3,horizonWeeks:c.data?c.data.horizon_weeks:3,offAnchor:c.data?c.data.off_anchor:"allow",
-      zones:z.data.map(r=>({id:r.id,name:r.name,desks:r.desks,off:(r.off_desks||[]).join(", ")})),
+      zones:z.data.map(r=>({id:r.id,name:r.name,desks:r.desks,off:(r.off_desks||[]).join(", "),layout:r.layout||""})),
       teams:t.data.map(r=>({id:r.id,name:r.name,people:r.people,days:(r.days||[]).slice().sort()})),
       closures:Object.fromEntries(cl.data.map(r=>[r.date,r.reason])),closureKinds:Object.fromEntries(cl.data.map(r=>[r.date,r.kind||"cierre"]))};
     cfgCache=cfg;ccb&&ccb(clone(cfg));}
@@ -62,7 +64,7 @@ function sbStore(sb,uid){
     async cancel(id){fail(await sb.from("bookings").delete().eq("id",id));rb()},
     async saveConfig(c){const prev=cfgCache||{zones:[],teams:[]};
       fail(await sb.from("office_config").update({office_days:c.officeDays,horizon_weeks:c.horizonWeeks,off_anchor:c.offAnchor,updated_at:new Date().toISOString()}).eq("id",1));
-      const zrows=c.zones.map((z,i)=>({id:z.id,name:z.name,desks:z.desks,off_desks:String(z.off||"").split(/[ ,;]+/).filter(Boolean).map(Number).filter(n=>n>0),sort:i}));
+      const zrows=c.zones.map((z,i)=>({id:z.id,name:z.name,desks:tablesOf(z).length?tablesOf(z).reduce((a,b)=>a+b,0):z.desks,layout:tablesOf(z).join(","),off_desks:String(z.off||"").split(/[ ,;]+/).filter(Boolean).map(Number).filter(n=>n>0),sort:i}));
       if(zrows.length)fail(await sb.from("zones").upsert(zrows));
       const zdel=prev.zones.map(z=>z.id).filter(id=>!c.zones.some(z=>z.id===id));if(zdel.length)fail(await sb.from("zones").delete().in("id",zdel));
       const trows=c.teams.map(t=>({id:t.id,name:t.name,people:t.people,days:t.days}));
@@ -184,13 +186,22 @@ function renderZones(){const d=S.selDay;const taken=new Map(bookingsOn(d).map(b=
   if(!past&&!inHorizon(d)){$("#planSub").textContent="Todavía no se puede reservar este día.";$("#zones").innerHTML='<div class="empty" style="grid-column:1/-1">'+ic("calendar-days","big")+'<b>La reserva se abre el '+esc(fmtDay(opensOn(d)))+'</b><span>Se puede reservar hasta '+S.cfg.horizonWeeks+' semanas adelante.</span></div>';return}
   $("#planSub").textContent=past?"Este día ya pasó.":mine?"Tenés el puesto "+mine.deskId+". Tocalo para liberarlo.":(anc.length&&!anc.includes(di)?"No es un día ancla de tu equipo. ":"")+"Elegí un puesto libre para reservarlo.";
   const all=desksOf(S.cfg);
-  $("#zones").innerHTML=S.cfg.zones.map(z=>{const ds=all.filter(x=>x.zone===z.id);const free=ds.filter(x=>!x.off&&!taken.has(x.id)).length;
-    return '<div class="zone"><h3>'+esc(z.name)+'<span class="num">'+free+' de '+ds.filter(x=>!x.off).length+' libres</span></h3><div class="desks">'+ds.map(x=>{
+  const seat=x=>{
       if(x.off)return '<div class="desk off" role="img" aria-label="'+x.id+', fuera de servicio" title="Fuera de servicio"><span class="code">'+x.id+'</span></div>';
       const b=taken.get(x.id);
       if(b&&b.userId===S.me.id)return '<button class="desk mine" data-desk="'+x.id+'" aria-label="'+x.id+', tu puesto"><span class="code">'+x.id+'</span><span class="who">'+ic("check")+'Tú</span></button>';
       if(b)return '<div class="desk taken" role="img" aria-label="'+x.id+', ocupado por '+esc(nameOf(b.userId))+'" title="'+esc(nameOf(b.userId))+'"><span class="code">'+x.id+'</span><span class="who">'+avatar(b.userId,nameOf(b.userId),"sm")+esc(nameOf(b.userId).split(" ")[0])+'</span></div>';
-      return '<button class="desk free" data-desk="'+x.id+'"'+(past||!S.canWrite?" disabled":"")+ ' aria-label="'+x.id+', libre">'+ic("armchair")+'<span class="code">'+x.id+'</span></button>'}).join("")+'</div></div>'}).join("");
+      return '<button class="desk free" data-desk="'+x.id+'"'+(past||!S.canWrite?" disabled":"")+ ' aria-label="'+x.id+', libre">'+ic("armchair")+'<span class="code">'+x.id+'</span></button>'};
+  /* a table: seats split in two facing rows around the table top */
+  const table=(seats,label,cap)=>{const top=seats.slice(0,Math.ceil(seats.length/2)),bot=seats.slice(Math.ceil(seats.length/2));
+    return '<div class="tbl'+(cap>=6?" long":"")+'" role="group" aria-label="'+esc(label)+'" style="--cols:'+Math.max(1,top.length)+'"><div class="seats">'+top.map(seat).join("")+'</div><div class="top"><span>'+esc(cap>=6?label:label.replace("Escritorio","Esc."))+'</span></div><div class="seats">'+bot.map(seat).join("")+'</div></div>'};
+  $("#zones").innerHTML=S.cfg.zones.map(z=>{const ds=all.filter(x=>x.zone===z.id);const free=ds.filter(x=>!x.off&&!taken.has(x.id)).length;const tl=tablesOf(z);
+    let body;
+    if(tl.length){let k=0,nl=0,ni=0;const tbls=tl.map(c=>{const part=ds.slice(k,k+c);k+=c;const long=c>=6;return {long,html:table(part,long?"Mesón "+(++nl):"Escritorio "+(++ni),c)}});
+      const rest=ds.slice(k);
+      body='<div class="room-tables">'+(tbls.some(t=>t.long)?'<div class="row-long">'+tbls.filter(t=>t.long).map(t=>t.html).join("")+'</div>':"")+(tbls.some(t=>!t.long)?'<div class="row-short">'+tbls.filter(t=>!t.long).map(t=>t.html).join("")+'</div>':"")+'</div>'+(rest.length?'<div class="desks">'+rest.map(seat).join("")+'</div>':"");}
+    else body='<div class="desks">'+ds.map(seat).join("")+'</div>';
+    return '<div class="zone'+(tl.length?" room":"")+'"><h3>'+esc(z.name)+'<span class="num">'+free+' de '+ds.filter(x=>!x.off).length+' libres</span></h3>'+body+'</div>'}).join("");
   $("#zones").querySelectorAll("button.desk").forEach(b=>b.addEventListener("click",()=>deskClick(b.dataset.desk)));}
 function renderReservar(){renderQuota();renderDays();renderZones()}
 
@@ -323,9 +334,9 @@ let cfgDraft=null;
 function renderConfig(){cfgDraft=cfgDraft||clone(S.cfg);const ed=S.canEdit;
   $("#cfgDays").value=cfgDraft.officeDays;$("#cfgHorizon").value=cfgDraft.horizonWeeks;$("#cfgOffAnchor").value=cfgDraft.offAnchor||"allow";
   ["#cfgDays","#cfgHorizon","#cfgOffAnchor","#addZone","#saveCfg"].forEach(s=>$(s).disabled=!ed);
-  $("#zoneRows").innerHTML=cfgDraft.zones.map((z,i)=>'<tr data-i="'+i+'"><td><input type="text" id="zc-'+i+'" data-f="id" value="'+esc(z.id)+'" maxlength="3" style="width:64px" aria-label="Código"'+(ed?"":" disabled")+'></td><td><input type="text" id="zn-'+i+'" data-f="name" value="'+esc(z.name)+'" aria-label="Nombre"'+(ed?"":" disabled")+'></td><td><input type="number" id="zd-'+i+'" data-f="desks" min="0" max="200" value="'+z.desks+'" aria-label="Puestos"'+(ed?"":" disabled")+'></td><td><input type="text" id="zo-'+i+'" data-f="off" value="'+esc(z.off||"")+'" placeholder="ej. 3, 7" aria-label="Puestos fuera de servicio"'+(ed?"":" disabled")+'></td><td>'+(ed?'<button class="btn ghost danger" data-del aria-label="Quitar zona">'+ic("trash-2")+'<span class="hide-sm">Quitar</span></button>':"")+'</td></tr>').join("");
-  $("#zoneRows").querySelectorAll("input").forEach(inp=>inp.addEventListener("change",()=>{const z=cfgDraft.zones[+inp.closest("tr").dataset.i];const f=inp.dataset.f;
-    z[f]=f==="desks"?Math.max(0,Math.min(200,+inp.value||0)):f==="id"?(inp.value.toUpperCase().replace(/[^A-Z0-9]/g,"")||"Z"):inp.value}));
+  $("#zoneRows").innerHTML=cfgDraft.zones.map((z,i)=>'<tr data-i="'+i+'"><td><input type="text" id="zc-'+i+'" data-f="id" value="'+esc(z.id)+'" maxlength="3" style="width:64px" aria-label="Código"'+(ed?"":" disabled")+'></td><td><input type="text" id="zn-'+i+'" data-f="name" value="'+esc(z.name)+'" aria-label="Nombre"'+(ed?"":" disabled")+'></td><td><input type="text" id="zl-'+i+'" data-f="layout" value="'+esc(tablesOf(z).join(", "))+'" placeholder="ej. 8, 2, 2" style="width:120px" aria-label="Mesas y lugares de cada una"'+(ed?"":" disabled")+'></td><td><input type="number" id="zd-'+i+'" data-f="desks" min="0" max="200" value="'+(tablesOf(z).length?tablesOf(z).reduce((a,b)=>a+b,0):z.desks)+'" aria-label="Puestos"'+(ed&&!tablesOf(z).length?"":" disabled")+(tablesOf(z).length?' title="Se calcula con las mesas"':"")+'></td><td><input type="text" id="zo-'+i+'" data-f="off" value="'+esc(z.off||"")+'" placeholder="ej. 3, 7" aria-label="Puestos fuera de servicio"'+(ed?"":" disabled")+'></td><td>'+(ed?'<button class="btn ghost danger" data-del aria-label="Quitar zona">'+ic("trash-2")+'<span class="hide-sm">Quitar</span></button>':"")+'</td></tr>').join("");
+  $("#zoneRows").querySelectorAll("input").forEach(inp=>inp.addEventListener("change",()=>{const z=cfgDraft.zones[+inp.closest("tr").dataset.i];const f=inp.dataset.f;if(f==="layout")setTimeout(()=>{const t=tablesOf(z);if(t.length)z.desks=t.reduce((a,b)=>a+b,0);renderConfig()});
+    z[f]=f==="desks"?Math.max(0,Math.min(200,+inp.value||0)):f==="layout"?tablesOf({layout:inp.value}).join(","):f==="id"?(inp.value.toUpperCase().replace(/[^A-Z0-9]/g,"")||"Z"):inp.value}));
   $("#zoneRows").querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{cfgDraft.zones.splice(+b.closest("tr").dataset.i,1);renderConfig()}));
   renderPeople();renderClosures();
   $("#cfgNote").textContent=ed?"Total: "+desksOf(cfgDraft).filter(d=>!d.off).length+" puestos activos. Las reservas existentes se mantienen aunque cambies las zonas.":"Solo quien administra la oficina puede cambiar esta configuración.";}

@@ -146,6 +146,17 @@ section.view{display:grid;gap:18px}
 .zone{border:1px dashed var(--line);border-radius:var(--r);padding:12px;min-width:0}
 .zone h3{font-size:14px;display:flex;justify-content:space-between;gap:8px;margin-bottom:10px}
 .zone h3 span{font-family:var(--f-body);font-weight:400;color:var(--muted);font-size:12px}
+.zone.room{border:3px solid var(--edge);border-radius:6px;background:linear-gradient(var(--bg),var(--bg)) padding-box;position:relative}
+.room-tables{display:grid;gap:14px}
+.row-long{display:flex;flex-wrap:wrap;gap:14px 12px;align-items:flex-start}
+.row-short{display:grid;grid-template-columns:repeat(2,max-content);gap:14px 28px;align-items:start}
+.tbl{display:grid;gap:4px;grid-template-rows:auto auto auto;flex:0 0 auto}
+.tbl .seats{display:grid;grid-template-columns:repeat(var(--cols),58px);gap:4px}
+.tbl .top{background:var(--surface-2,var(--accent-soft));border:1px solid var(--line);border-radius:6px;min-height:26px;display:grid;place-items:center;padding:2px 6px}
+.tbl .top span{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.tbl.long .top{min-height:30px}
+.tbl .desk{aspect-ratio:auto;height:50px}
+@media (max-width:480px){.tbl .seats{grid-template-columns:repeat(var(--cols),minmax(52px,62px))}.row-short{gap:12px 20px}}
 .desks{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
 .desk{aspect-ratio:1.25;max-width:100%;border-radius:8px;border:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px;min-width:0}
 .desk .code{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
@@ -447,8 +458,8 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
       </div>
     </div>
     <div class="panel" style="display:grid;gap:12px">
-      <div class="row"><div><h2>Zonas y puestos</h2><p class="sub">Cada zona genera puestos numerados, por ejemplo N-01, N-02.</p></div><span class="spacer"></span><button class="btn" id="addZone"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Agregar zona</button></div>
-      <div class="tablewrap"><table><thead><tr><th>Código</th><th>Nombre</th><th>Puestos</th><th>Puestos fuera de servicio</th><th></th></tr></thead><tbody id="zoneRows"></tbody></table></div>
+      <div class="row"><div><h2>Zonas y puestos</h2><p class="sub">En Mesas poné cuántos lugares tiene cada mesa, en orden: <b>8, 2, 2</b> es un mesón de 8 y dos escritorios de 2. Los puestos se numeran siguiendo ese orden (N-01, N-02…).</p></div><span class="spacer"></span><button class="btn" id="addZone"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Agregar zona</button></div>
+      <div class="tablewrap"><table><thead><tr><th>Código</th><th>Nombre</th><th>Mesas</th><th>Puestos</th><th>Puestos fuera de servicio</th><th></th></tr></thead><tbody id="zoneRows"></tbody></table></div>
     </div>
     <div class="panel" style="display:grid;gap:12px">
       <div><h2>Feriados y cierres</h2><p class="sub">Los días marcados no se pueden reservar. Al marcar un día se cancelan las reservas que ya había.</p></div>
@@ -471,9 +482,9 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
 <div id="sheetHost"></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="vendor/supabase-2.117.2.js?v=20261017c"></script>
-<script src="icons.js?v=20261017c"></script>
-<script src="config.js?v=20261017c"></script>
-<script src="app.js?v=20261017c"></script>
+<script src="vendor/supabase-2.117.2.js?v=20261017d"></script>
+<script src="icons.js?v=20261017d"></script>
+<script src="config.js?v=20261017d"></script>
+<script src="app.js?v=20261017d"></script>
 </body>
 </html>

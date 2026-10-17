@@ -9,6 +9,7 @@ Reserva y gestión de puestos de oficina para el esquema híbrido de **3 días p
 - **Reservar:** semana con puestos libres por día y plano por zonas. Un toque reserva o libera. Contador de días presenciales de la semana.
 - **Reservar mis días de equipo:** reserva tus 3 días ancla, con el mismo puesto si es posible.
 - **Equipos:** cada equipo tiene 3 días ancla. El optimizador los reparte para que el día más cargado use la menor cantidad de puestos.
+- **Plano visual:** cada zona se dibuja como una sala con sus mesas reales (mesones y escritorios). La distribución se carga en Oficina → Zonas, columna Mesas (por ejemplo `8, 2, 2, 2, 2`).
 - **Vista de mes:** en Reservar y en Mis reservas, con los feriados y días no laborables de Argentina 2026-2027 marcados. Los días que todavía no se pueden reservar muestran cuándo se abren.
 - **Reserva recurrente:** elegís hasta 3 días fijos y un puesto, y la app los reserva sola cada noche hasta el horizonte. Si liberás un día, no se vuelve a reservar. Si tu puesto está ocupado, te toca otro de la misma zona.
 - **Ocupación:** reservas por día frente a la capacidad.
