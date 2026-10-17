@@ -89,13 +89,24 @@ function initials(n){return String(n||"?").trim().split(/\s+/).slice(0,2).map(p=
 function nameOf(id){if(id===S.me.id)return S.me.name||"Tú";return S.names[id]||"Colega"}
 
 /* ---------- ui helpers ---------- */
+const ic=(n,c)=>'<svg class="ic'+(c?" "+c:"")+'" aria-hidden="true"><use href="#i-'+n+'"/></svg>';
+function avatar(id,name,size){return '<span class="avatar'+(size?" "+size:"")+'" style="background:'+colorFor(id)+'" aria-hidden="true">'+esc(initials(name))+'</span>'}
+const DESK_ILLUS='<svg class="illus" viewBox="0 0 220 110" aria-hidden="true"><rect class="as" x="0" y="96" width="220" height="6" rx="3"/><rect class="a" x="40" y="44" width="110" height="10" rx="3"/><rect class="a" x="50" y="54" width="6" height="42"/><rect class="a" x="134" y="54" width="6" height="42"/><rect class="l" x="74" y="18" width="42" height="26" rx="3"/><rect class="s" x="78" y="22" width="34" height="18" rx="2"/><rect class="t" x="120" y="34" width="14" height="10" rx="2"/><path class="k" d="M166 96V70h22v26M170 70V52a7 7 0 0 1 14 0v18"/><circle class="t" cx="30" cy="34" r="10"/><path class="k" d="M30 44v52M22 60l8 6 8-10"/></svg>';
+/* theme: system → light → dark */
+const THEMES=["system","light","dark"],THEME_ICON={system:"monitor",light:"sun",dark:"moon"},THEME_LABEL={system:"Tema del sistema",light:"Tema claro",dark:"Tema oscuro"};
+function getTheme(){try{return localStorage.getItem("alterna:theme")||"system"}catch(e){return "system"}}
+function applyTheme(t){const el=document.documentElement;t==="system"?el.removeAttribute("data-theme"):el.setAttribute("data-theme",t);
+  try{localStorage.setItem("alterna:theme",t)}catch(e){}
+  document.querySelectorAll("[data-theme-toggle]").forEach(b=>{b.innerHTML=ic(THEME_ICON[t]);b.title=THEME_LABEL[t]+" (tocá para cambiar)";b.setAttribute("aria-label",THEME_LABEL[t]+". Cambiar tema")})}
+document.querySelectorAll("[data-theme-toggle]").forEach(b=>b.addEventListener("click",()=>{const t=getTheme();const n=THEMES[(THEMES.indexOf(t)+1)%3];applyTheme(n);toast(THEME_LABEL[n]+".")}));
+applyTheme(getTheme());
 let tt;function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,3200)}
 function sheet(html,bind){const h=$("#sheetHost");h.innerHTML='<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">'+html+'</div></div>';
   const close=()=>h.innerHTML="";$("#scrim").addEventListener("click",e=>{if(e.target.id==="scrim")close()});
   h.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",close));bind&&bind(close);const f=h.querySelector("button");f&&f.focus()}
 
 /* ---------- render: header ---------- */
-function renderMe(){$("#meInfo").innerHTML='<span class="avatar" style="background:'+esc(S.me.color||"#0f6b5c")+'">'+esc(initials(S.me.name))+'</span><span style="min-width:0"><b>'+esc(S.me.name||"Tú")+'</b><br>'+esc(myTeam()?myTeam().name:"Sin equipo")+'</span>'}
+function renderMe(){$("#meInfo").innerHTML=avatar(S.me.id,S.me.name)+'<span style="min-width:0"><b>'+esc(S.me.name||"Tú")+'</b><br>'+esc(myTeam()?myTeam().name:"Sin equipo")+'</span>'}
 
 /* ---------- render: reservar ---------- */
 function renderQuota(){const days=weekDays(S.week);const mine=days.filter(d=>myOn(d)).length;const q=S.cfg.officeDays;
@@ -120,9 +131,9 @@ function renderZones(){const d=S.selDay;const taken=new Map(bookingsOn(d).map(b=
     return '<div class="zone"><h3>'+esc(z.name)+'<span class="num">'+free+' de '+ds.filter(x=>!x.off).length+' libres</span></h3><div class="desks">'+ds.map(x=>{
       if(x.off)return '<div class="desk off" title="Fuera de servicio"><span class="code">'+x.id+'</span></div>';
       const b=taken.get(x.id);
-      if(b&&b.userId===S.me.id)return '<button class="desk mine" data-desk="'+x.id+'" aria-label="'+x.id+', tu puesto"><span class="code">'+x.id+'</span><span class="who">Tú</span></button>';
-      if(b)return '<div class="desk taken" title="'+esc(nameOf(b.userId))+'"><span class="code">'+x.id+'</span><span class="who">'+esc(nameOf(b.userId).split(" ")[0])+'</span></div>';
-      return '<button class="desk free" data-desk="'+x.id+'"'+(past||!S.canWrite?" disabled":"")+' aria-label="'+x.id+', libre"><span class="code">'+x.id+'</span></button>'}).join("")+'</div></div>'}).join("");
+      if(b&&b.userId===S.me.id)return '<button class="desk mine" data-desk="'+x.id+'" aria-label="'+x.id+', tu puesto"><span class="code">'+x.id+'</span><span class="who">'+ic("check")+'Tú</span></button>';
+      if(b)return '<div class="desk taken" title="'+esc(nameOf(b.userId))+'"><span class="code">'+x.id+'</span><span class="who">'+avatar(b.userId,nameOf(b.userId),"sm")+esc(nameOf(b.userId).split(" ")[0])+'</span></div>';
+      return '<button class="desk free" data-desk="'+x.id+'"'+(past||!S.canWrite?" disabled":"")+ ' aria-label="'+x.id+', libre">'+ic("armchair")+'<span class="code">'+x.id+'</span></button>'}).join("")+'</div></div>'}).join("");
   $("#zones").querySelectorAll("button.desk").forEach(b=>b.addEventListener("click",()=>deskClick(b.dataset.desk)));}
 function renderReservar(){renderQuota();renderDays();renderZones()}
 
@@ -163,7 +174,7 @@ async function autoBook(){const days=weekDays(S.week);const anc=anchorIdx();cons
 function renderMias(){const list=myBookings().filter(b=>b.date>=todayStr);
   $("#myList").innerHTML=list.length?list.map(b=>{const z=S.cfg.zones.find(z=>z.id===b.deskId.split("-")[0]);
     return '<div class="item"><span class="tag">'+esc(b.deskId)+'</span><div class="grow"><b>'+esc(fmtDay(b.date))+'</b><span class="sub">'+esc(z?z.name:"")+(b.date===todayStr?" · hoy":"")+'</span></div><button class="btn danger" data-cancel="'+esc(b.id)+'">Liberar</button></div>'}).join("")
-    :'<div class="empty">Todavía no tenés reservas. Andá a Reservar y elegí un puesto, o usá “Reservar mis días de equipo”.</div>';
+    :'<div class="empty">'+DESK_ILLUS+'Todavía no tenés reservas. Andá a Reservar y elegí un puesto, o usá “Reservar mis días de equipo”.</div>';
   $("#myList").querySelectorAll("[data-cancel]").forEach(b=>b.addEventListener("click",()=>doCancel(b.dataset.cancel)));
   const sel=$("#myTeam");sel.innerHTML='<option value="">Sin equipo</option>'+S.cfg.teams.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+' ('+t.days.map(i=>DAYN[i]).join(", ")+')</option>').join("");
   sel.value=myTeam()?S.profile.teamId:"";
@@ -198,9 +209,9 @@ function renderPlan(){const cap=capacity();const k=S.cfg.officeDays;const teams=
   $("#planTiles").innerHTML=[["Personas en equipos",total,teams.length+" equipos"],["Pico planificado",peak,"personas el día más cargado"],["Mínimo teórico",ideal,"puestos con carga perfectamente pareja"],["Capacidad del esquema",support,"personas que entran con "+cap+" puestos y "+k+"+"+(5-k)]]
     .map((t,i)=>'<div class="tile"><div class="k">'+t[0]+'</div><div class="v"'+(i===1&&peak>cap?' style="color:var(--warn)"':"")+'>'+t[1]+'</div><div class="h">'+esc(t[2])+'</div></div>').join("");
   const ed=S.canEdit;
-  if(!teams.length){$("#teamsBox").innerHTML='<div class="empty">Todavía no hay equipos. Agregá tus equipos con su cantidad de personas, o '+(ed?'<button class="btn" id="loadEx">cargá un ejemplo</button> para probar el optimizador':"pedile a quien administra la oficina que los cargue")+'.</div>';
+  if(!teams.length){$("#teamsBox").innerHTML='<div class="empty">'+DESK_ILLUS+'<span>Todavía no hay equipos. Agregá tus equipos con su cantidad de personas, o '+(ed?'<button class="btn" id="loadEx">cargá un ejemplo</button> para probar el optimizador':"pedile a quien administra la oficina que los cargue")+'.</span></div>';
     const b=$("#loadEx");b&&b.addEventListener("click",()=>{S.draft=EXAMPLE_TEAMS.map(([n,p],i)=>({id:uidGen(),name:n+" (ejemplo)",people:p,days:COMBOS(k)[i%10].slice()}));renderPlan()})}
-  else{$("#teamsBox").innerHTML='<div class="tablewrap"><table><thead><tr><th>Equipo</th><th>Personas</th><th>Días ancla</th><th></th></tr></thead><tbody>'+teams.map((t,ti)=>'<tr data-i="'+ti+'"><td>'+(ed?'<input type="text" id="tn-'+esc(t.id)+'" data-f="name" value="'+esc(t.name)+'" aria-label="Nombre del equipo">':esc(t.name))+'</td><td>'+(ed?'<input type="number" min="0" id="tp-'+esc(t.id)+'" data-f="people" value="'+(+t.people||0)+'" aria-label="Personas">':'<span class="num">'+t.people+'</span>')+'</td><td><div class="dchips">'+DAYN.map((dn,i)=>'<button class="dchip'+(t.days.includes(i)?" on":"")+'" data-d="'+i+'"'+(ed?"":" disabled")+' aria-pressed="'+t.days.includes(i)+'" aria-label="'+DAYL[i]+'">'+dn[0]+'</button>').join("")+'</div></td><td>'+(ed?'<button class="btn ghost danger" data-del aria-label="Quitar equipo">Quitar</button>':"")+'</td></tr>').join("")+'</tbody></table></div>'+(S.draft?'<div class="row" style="margin-top:12px"><span class="sub">Tenés cambios sin guardar.</span><span class="spacer"></span><button class="btn ghost" id="discard">Descartar</button><button class="btn primary" id="saveTeams">Guardar equipos</button></div>':"");
+  else{$("#teamsBox").innerHTML='<div class="tablewrap"><table><thead><tr><th>Equipo</th><th>Personas</th><th>Días ancla</th><th></th></tr></thead><tbody>'+teams.map((t,ti)=>'<tr data-i="'+ti+'"><td>'+(ed?'<input type="text" id="tn-'+esc(t.id)+'" data-f="name" value="'+esc(t.name)+'" aria-label="Nombre del equipo">':esc(t.name))+'</td><td>'+(ed?'<input type="number" min="0" id="tp-'+esc(t.id)+'" data-f="people" value="'+(+t.people||0)+'" aria-label="Personas">':'<span class="num">'+t.people+'</span>')+'</td><td><div class="dchips">'+DAYN.map((dn,i)=>'<button class="dchip'+(t.days.includes(i)?" on":"")+'" data-d="'+i+'"'+(ed?"":" disabled")+' aria-pressed="'+t.days.includes(i)+'" aria-label="'+DAYL[i]+'">'+dn[0]+'</button>').join("")+'</div></td><td>'+(ed?'<button class="btn ghost danger" data-del aria-label="Quitar equipo">'+ic("trash-2")+'<span class="hide-sm">Quitar</span></button>':"")+'</td></tr>').join("")+'</tbody></table></div>'+(S.draft?'<div class="row" style="margin-top:12px"><span class="sub">Tenés cambios sin guardar.</span><span class="spacer"></span><button class="btn ghost" id="discard">Descartar</button><button class="btn primary" id="saveTeams">Guardar equipos</button></div>':"");
     const box=$("#teamsBox");const ensure=()=>{if(!S.draft)S.draft=clone(S.cfg.teams);return S.draft};
     box.querySelectorAll("input[data-f]").forEach(inp=>inp.addEventListener("change",()=>{const i=+inp.closest("tr").dataset.i;const dr=ensure();dr[i][inp.dataset.f]=inp.dataset.f==="people"?Math.max(0,+inp.value||0):inp.value.trim()||"Equipo";renderPlan()}));
     box.querySelectorAll(".dchip").forEach(b=>b.addEventListener("click",()=>{const i=+b.closest("tr").dataset.i;const dr=ensure();const d=+b.dataset.d;const s=new Set(dr[i].days);
@@ -217,7 +228,7 @@ let cfgDraft=null;
 function renderConfig(){cfgDraft=cfgDraft||clone(S.cfg);const ed=S.canEdit;
   $("#cfgDays").value=cfgDraft.officeDays;$("#cfgHorizon").value=cfgDraft.horizonWeeks;$("#cfgOffAnchor").value=cfgDraft.offAnchor||"allow";
   ["#cfgDays","#cfgHorizon","#cfgOffAnchor","#addZone","#saveCfg"].forEach(s=>$(s).disabled=!ed);
-  $("#zoneRows").innerHTML=cfgDraft.zones.map((z,i)=>'<tr data-i="'+i+'"><td><input type="text" id="zc-'+i+'" data-f="id" value="'+esc(z.id)+'" maxlength="3" style="width:64px" aria-label="Código"'+(ed?"":" disabled")+'></td><td><input type="text" id="zn-'+i+'" data-f="name" value="'+esc(z.name)+'" aria-label="Nombre"'+(ed?"":" disabled")+'></td><td><input type="number" id="zd-'+i+'" data-f="desks" min="0" max="200" value="'+z.desks+'" aria-label="Puestos"'+(ed?"":" disabled")+'></td><td><input type="text" id="zo-'+i+'" data-f="off" value="'+esc(z.off||"")+'" placeholder="ej. 3, 7" aria-label="Puestos fuera de servicio"'+(ed?"":" disabled")+'></td><td>'+(ed?'<button class="btn ghost danger" data-del>Quitar</button>':"")+'</td></tr>').join("");
+  $("#zoneRows").innerHTML=cfgDraft.zones.map((z,i)=>'<tr data-i="'+i+'"><td><input type="text" id="zc-'+i+'" data-f="id" value="'+esc(z.id)+'" maxlength="3" style="width:64px" aria-label="Código"'+(ed?"":" disabled")+'></td><td><input type="text" id="zn-'+i+'" data-f="name" value="'+esc(z.name)+'" aria-label="Nombre"'+(ed?"":" disabled")+'></td><td><input type="number" id="zd-'+i+'" data-f="desks" min="0" max="200" value="'+z.desks+'" aria-label="Puestos"'+(ed?"":" disabled")+'></td><td><input type="text" id="zo-'+i+'" data-f="off" value="'+esc(z.off||"")+'" placeholder="ej. 3, 7" aria-label="Puestos fuera de servicio"'+(ed?"":" disabled")+'></td><td>'+(ed?'<button class="btn ghost danger" data-del aria-label="Quitar zona">'+ic("trash-2")+'<span class="hide-sm">Quitar</span></button>':"")+'</td></tr>').join("");
   $("#zoneRows").querySelectorAll("input").forEach(inp=>inp.addEventListener("change",()=>{const z=cfgDraft.zones[+inp.closest("tr").dataset.i];const f=inp.dataset.f;
     z[f]=f==="desks"?Math.max(0,Math.min(200,+inp.value||0)):f==="id"?(inp.value.toUpperCase().replace(/[^A-Z0-9]/g,"")||"Z"):inp.value}));
   $("#zoneRows").querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{cfgDraft.zones.splice(+b.closest("tr").dataset.i,1);renderConfig()}));
@@ -227,7 +238,7 @@ function renderConfig(){cfgDraft=cfgDraft||clone(S.cfg);const ed=S.canEdit;
 function renderPeople(){const box=$("#peoplePanel");box.hidden=!S.canEdit;if(!S.canEdit)return;
   const admins=S.people.filter(p=>p.role==="admin").length;
   $("#peopleRows").innerHTML=S.people.map(p=>{const t=S.cfg.teams.find(t=>t.id===p.team_id);const lastAdmin=p.role==="admin"&&admins<=1;
-    return '<tr><td>'+esc(p.full_name||"Sin nombre")+(p.id===S.me.id?' <span class="sub">(vos)</span>':"")+'</td><td>'+esc(t?t.name:"Sin equipo")+'</td><td><select id="role-'+esc(p.id)+'" data-person="'+esc(p.id)+'" aria-label="Rol"'+(lastAdmin?' disabled title="Tiene que quedar al menos un administrador"':"")+'><option value="member"'+(p.role==="member"?" selected":"")+'>Colaborador</option><option value="admin"'+(p.role==="admin"?" selected":"")+'>Administrador</option></select></td></tr>'}).join("")||'<tr><td colspan="3" class="sub">Todavía no hay personas registradas.</td></tr>';
+    return '<tr><td><span class="person">'+avatar(p.id,p.full_name)+'<span>'+esc(p.full_name||"Sin nombre")+(p.id===S.me.id?' <span class="sub">(vos)</span>':"")+'</span></span></td><td>'+esc(t?t.name:"Sin equipo")+'</td><td><select id="role-'+esc(p.id)+'" data-person="'+esc(p.id)+'" aria-label="Rol"'+(lastAdmin?' disabled title="Tiene que quedar al menos un administrador"':"")+'><option value="member"'+(p.role==="member"?" selected":"")+'>Colaborador</option><option value="admin"'+(p.role==="admin"?" selected":"")+'>Administrador</option></select></td></tr>'}).join("")||'<tr><td colspan="3" class="sub">Todavía no hay personas registradas.</td></tr>';
   $("#peopleRows").querySelectorAll("select[data-person]").forEach(sel=>sel.addEventListener("change",async()=>{
     try{await store.updatePerson(sel.dataset.person,{role:sel.value});toast("Rol actualizado.")}catch(e){toast("No se pudo cambiar el rol.")}
     await loadPeople();render()}));}

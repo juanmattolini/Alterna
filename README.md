@@ -19,6 +19,7 @@ Reserva y gestión de puestos de oficina para el esquema híbrido de **3 días p
 | Frontend estático | `index.html`, `app.js`, `config.js` — publicado con GitHub Pages |
 | Backend | Supabase (proyecto `alterna`): Postgres + Auth + Realtime |
 | Esquema y permisos | `supabase/migrations/` |
+| Íconos | `icons.js` (sprite de [Lucide](https://lucide.dev), licencia ISC) |
 | Librería de Supabase | `vendor/supabase-2.117.2.js` (copia local de `@supabase/supabase-js`) |
 
 No hay paso de build: cualquier cambio en `main` se publica solo.
