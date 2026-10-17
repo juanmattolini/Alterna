@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Alterna</title>
 <meta name="description" content="Reserva y gestión de puestos de oficina para el esquema híbrido de 3 días presenciales y 2 de home office.">
-<meta name="theme-color" content="#0f6b5c">
+<meta name="theme-color" content="#1d6f72">
 <script>try{var t=localStorage.getItem("alterna:theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -20,25 +20,25 @@ img{max-width:100%}
 [hidden]{display:none!important}
 /* Layout: app shell; week strip + floor plan of desk tiles; bottom tab bar on phones, top tabs on desktop */
 :root{
-  --bg:#f3f5f4; --surface:#ffffff; --ink:#15302c; --muted:#5d716d; --line:#d6dedb;
-  --accent:#0f6b5c; --accent-ink:#ffffff; --accent-soft:#dcefea;
+  --bg:#eef4f5; --surface:#ffffff; --ink:#1a2332; --muted:#506173; --line:#d3dee3; --edge:#7d8fa0;
+  --accent:#1d6f72; --accent-ink:#ffffff; --accent-soft:#d8ecec;
   --tag:#f2c14e; --tag-ink:#3a2c00;
-  --taken:#e6eae9; --taken-ink:#6b7b78; --warn:#b35c00; --warn-soft:#fbead6; --danger:#b3261e;
+  --taken:#e3e9ee; --taken-ink:#55667a; --warn:#a35200; --warn-soft:#fbead6; --danger:#b3261e;
   --f-display:"Familjen Grotesk","Segoe UI",system-ui,sans-serif;
   --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,sans-serif;
   --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
   --r:10px;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0f1817; --surface:#162321; --ink:#e3ece9; --muted:#93a6a2; --line:#2a3b38;
-  --accent:#4fc2a9; --accent-ink:#06211b; --accent-soft:#183b34;
+  --bg:#141c28; --surface:#1c2736; --ink:#eef6f2; --muted:#a4b4c4; --line:#2c3b4f; --edge:#5b708a;
+  --accent:#8fd3d6; --accent-ink:#10202a; --accent-soft:#203c48;
   --tag:#f2c14e; --tag-ink:#2b2000;
-  --taken:#22302e; --taken-ink:#8a9c98; --warn:#f0a050; --warn-soft:#3a2a17; --danger:#ff8a80; color-scheme:dark}}
+  --taken:#253244; --taken-ink:#a4b4c4; --warn:#f0a050; --warn-soft:#3a2a17; --danger:#ff8a80; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0f1817; --surface:#162321; --ink:#e3ece9; --muted:#93a6a2; --line:#2a3b38;
-  --accent:#4fc2a9; --accent-ink:#06211b; --accent-soft:#183b34;
+  --bg:#141c28; --surface:#1c2736; --ink:#eef6f2; --muted:#a4b4c4; --line:#2c3b4f; --edge:#5b708a;
+  --accent:#8fd3d6; --accent-ink:#10202a; --accent-soft:#203c48;
   --tag:#f2c14e; --tag-ink:#2b2000;
-  --taken:#22302e; --taken-ink:#8a9c98; --warn:#f0a050; --warn-soft:#3a2a17; --danger:#ff8a80; color-scheme:dark}
+  --taken:#253244; --taken-ink:#a4b4c4; --warn:#f0a050; --warn-soft:#3a2a17; --danger:#ff8a80; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
@@ -202,6 +202,35 @@ td input[type=number]{width:76px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:30;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px)}
 @media (min-width:721px){.toast{bottom:calc(24px + env(safe-area-inset-bottom,0px))}}
 @media (prefers-reduced-motion:no-preference){.desk,.day,.btn{transition:background-color .15s,border-color .15s}}
+/* accessibility pass: 3:1 edges on controls, 44px targets, readable disabled state */
+.desk,.day,.btn,.icon-btn,.theme-btn,.dchip,.field input,.field select,td input[type=text],td input[type=number],td select{border-color:var(--edge)}
+.btn.primary{border-color:var(--accent)}
+.desk.taken,.desk.off{border-color:var(--line)}
+.desk.mine{border-color:var(--tag)}
+.btn{min-height:44px}
+.icon-btn,.theme-btn{width:44px;height:44px}
+.dchip{width:38px;height:38px}
+nav.tabs button{min-height:44px}
+.btn:disabled{opacity:1;background:var(--taken);border-color:var(--line);color:var(--taken-ink)}
+a:focus-visible,.desk:focus-visible,.day:focus-visible,[role=tab]:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.hint{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--accent-soft);border-radius:var(--r);padding:12px 14px;font-size:14px}
+.hint .ic{color:var(--accent)}
+.hint .grow{flex:1;min-width:200px}
+.skip{position:absolute;left:-9999px;top:8px;z-index:50;background:var(--surface);color:var(--ink);padding:10px 14px;border-radius:8px;border:2px solid var(--accent)}
+.skip:focus{left:max(16px,env(safe-area-inset-left,0px))}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* teams table becomes cards on phones */
+@media (max-width:560px){
+  #teamsBox table{min-width:0}
+  #teamsBox thead{display:none}
+  #teamsBox tr{display:grid;grid-template-columns:1fr auto;gap:8px 10px;padding:12px 0;border-bottom:1px solid var(--line)}
+  #teamsBox td{border:0;padding:0}
+  #teamsBox td:nth-child(1){grid-column:1/-1}
+  #teamsBox td:nth-child(3){grid-column:1/2}
+  #teamsBox td:nth-child(2){grid-column:1/2}
+  #teamsBox td:nth-child(4){grid-column:2/3;grid-row:2/4;align-self:center}
+  #teamsBox .tablewrap{overflow:visible}
+}
 /* auth */
 body.signed-out header.top,body.signed-out main{display:none}
 #auth{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding-block:32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
@@ -225,6 +254,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
 </style>
 </head>
 <body class="signed-out">
+<a class="skip" href="#main">Saltar al contenido</a>
 <section id="auth" hidden>
   <div class="auth-card">
     <div class="auth-brand"><div class="logo" aria-hidden="true">3+2</div><div><h1>Alterna</h1></div><span class="spacer"></span><button class="theme-btn" data-theme-toggle type="button" aria-label="Cambiar tema"></button></div>
@@ -278,19 +308,20 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
       </div>
       <div class="me"><div class="me-actions" id="meInfo"></div><button class="theme-btn" data-theme-toggle type="button" aria-label="Cambiar tema"></button><button class="btn ghost" id="logout"><svg class="ic" aria-hidden="true"><use href="#i-log-out"/></svg><span class="hide-sm">Salir</span></button></div>
     </div>
-    <nav class="tabs" role="tablist" id="tabs">
-      <button role="tab" data-tab="reservar" aria-selected="true"><svg class="ic tabicon" aria-hidden="true"><use href="#i-armchair"/></svg>Reservar</button>
-      <button role="tab" data-tab="mias" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-calendar-check"/></svg>Mis reservas</button>
-      <button role="tab" data-tab="ocupacion" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-chart-column"/></svg>Ocupación</button>
-      <button role="tab" data-tab="plan" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-users"/></svg>Equipos</button>
-      <button role="tab" data-tab="config" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-building-2"/></svg>Oficina</button>
+    <nav class="tabs" role="tablist" id="tabs" aria-label="Secciones">
+      <button role="tab" id="tab-reservar" aria-controls="v-reservar" data-tab="reservar" aria-selected="true"><svg class="ic tabicon" aria-hidden="true"><use href="#i-armchair"/></svg>Reservar</button>
+      <button role="tab" id="tab-mias" aria-controls="v-mias" data-tab="mias" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-calendar-check"/></svg>Mis reservas</button>
+      <button role="tab" id="tab-ocupacion" aria-controls="v-ocupacion" data-tab="ocupacion" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-chart-column"/></svg>Ocupación</button>
+      <button role="tab" id="tab-plan" aria-controls="v-plan" data-tab="plan" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-users"/></svg>Equipos</button>
+      <button role="tab" id="tab-config" aria-controls="v-config" data-tab="config" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-building-2"/></svg>Oficina</button>
     </nav>
   </div>
 </header>
 
 <main class="wrap" id="main">
   
-  <section class="view" id="v-reservar">
+  <section class="view" role="tabpanel" aria-labelledby="tab-reservar" id="v-reservar">
+    <div class="hint" id="teamHint" hidden><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg><span class="grow">Elegí tu equipo para ver tus días ancla y reservarlos con un toque.</span><button class="btn" id="pickTeam">Elegir equipo</button></div>
     <div class="panel quota" id="quota"></div>
     <div class="panel" style="display:grid;gap:14px">
       <div class="row">
@@ -318,7 +349,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
     </div>
   </section>
 
-  <section class="view" id="v-mias" hidden>
+  <section class="view" role="tabpanel" aria-labelledby="tab-mias" id="v-mias" hidden>
     <div class="panel"><h2>Mis reservas</h2><p class="sub">Tus próximos días en la oficina. Liberá el puesto si cambiás de plan, así lo puede usar otra persona.</p></div>
     <div class="list" id="myList"></div>
     <div class="panel" style="display:grid;gap:10px">
@@ -331,7 +362,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
     </div>
   </section>
 
-  <section class="view" id="v-ocupacion" hidden>
+  <section class="view" role="tabpanel" aria-labelledby="tab-ocupacion" id="v-ocupacion" hidden>
     <div class="tiles" id="occTiles"></div>
     <div class="panel" style="display:grid;gap:12px">
       <div><h2>Reservas por día</h2><p class="sub">Puestos reservados frente a la capacidad total. La línea marca la capacidad.</p></div>
@@ -339,7 +370,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
     </div>
   </section>
 
-  <section class="view" id="v-plan" hidden>
+  <section class="view" role="tabpanel" aria-labelledby="tab-plan" id="v-plan" hidden>
     <div class="tiles" id="planTiles"></div>
     <div class="panel" style="display:grid;gap:12px">
       <div class="row">
@@ -356,7 +387,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
     </div>
   </section>
 
-  <section class="view" id="v-config" hidden>
+  <section class="view" role="tabpanel" aria-labelledby="tab-config" id="v-config" hidden>
     <div class="panel" style="display:grid;gap:12px">
       <h2>Reglas de presencialidad</h2>
       <div class="grid2">
@@ -379,7 +410,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
 </main>
 
 <div id="sheetHost"></div>
-<div class="toast" id="toast" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <script src="vendor/supabase-2.117.2.js"></script>
 <script src="icons.js"></script>

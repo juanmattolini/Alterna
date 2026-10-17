@@ -42,7 +42,7 @@ function sbStore(sb,uid){
       teams:t.data.map(r=>({id:r.id,name:r.name,people:r.people,days:(r.days||[]).slice().sort()}))};
     cfgCache=cfg;ccb&&ccb(clone(cfg));}
   async function loadB(){if(!range)return;const r=await sb.from("bookings").select("id,date,desk_id,user_id").gte("date",range[0]).lte("date",range[1]);
-    if(r.error){toast("No se pudieron cargar las reservas.");return}bcb&&bcb(r.data.map(mapB))}
+    if(r.error){toast("No pudimos cargar las reservas. Recargá la página.");return}bcb&&bcb(r.data.map(mapB))}
   const deb=(f,ms)=>{let t;return()=>{clearTimeout(t);t=setTimeout(f,ms||250)}};
   const rb=deb(loadB),rc=deb(()=>loadCfg().catch(()=>{}));
   sb.channel("alterna-live")
@@ -54,7 +54,7 @@ function sbStore(sb,uid){
   document.addEventListener("visibilitychange",()=>{if(!document.hidden){rb();rc()}});
   return{
     watchBookings(from,to,cb){bcb=cb;range=[from,to];loadB();return()=>{}},
-    watchConfig(cb){ccb=cb;loadCfg().catch(()=>toast("No se pudo cargar la configuración de la oficina."))},
+    watchConfig(cb){ccb=cb;loadCfg().catch(()=>toast("No pudimos cargar la oficina. Recargá la página."))},
     async claim(date,deskId){const r=await sb.from("bookings").insert({date,desk_id:deskId});
       if(r.error){if(r.error.code==="23505"){rb();return false}throw r.error}rb();return true},
     async cancel(id){fail(await sb.from("bookings").delete().eq("id",id));rb()},
@@ -93,17 +93,28 @@ const ic=(n,c)=>'<svg class="ic'+(c?" "+c:"")+'" aria-hidden="true"><use href="#
 function avatar(id,name,size){return '<span class="avatar'+(size?" "+size:"")+'" style="background:'+colorFor(id)+'" aria-hidden="true">'+esc(initials(name))+'</span>'}
 const DESK_ILLUS='<svg class="illus" viewBox="0 0 220 110" aria-hidden="true"><rect class="as" x="0" y="96" width="220" height="6" rx="3"/><rect class="a" x="40" y="44" width="110" height="10" rx="3"/><rect class="a" x="50" y="54" width="6" height="42"/><rect class="a" x="134" y="54" width="6" height="42"/><rect class="l" x="74" y="18" width="42" height="26" rx="3"/><rect class="s" x="78" y="22" width="34" height="18" rx="2"/><rect class="t" x="120" y="34" width="14" height="10" rx="2"/><path class="k" d="M166 96V70h22v26M170 70V52a7 7 0 0 1 14 0v18"/><circle class="t" cx="30" cy="34" r="10"/><path class="k" d="M30 44v52M22 60l8 6 8-10"/></svg>';
 /* theme: system → light → dark */
-const THEMES=["system","light","dark"],THEME_ICON={system:"monitor",light:"sun",dark:"moon"},THEME_LABEL={system:"Tema del sistema",light:"Tema claro",dark:"Tema oscuro"};
-function getTheme(){try{return localStorage.getItem("alterna:theme")||"system"}catch(e){return "system"}}
-function applyTheme(t){const el=document.documentElement;t==="system"?el.removeAttribute("data-theme"):el.setAttribute("data-theme",t);
-  try{localStorage.setItem("alterna:theme",t)}catch(e){}
-  document.querySelectorAll("[data-theme-toggle]").forEach(b=>{b.innerHTML=ic(THEME_ICON[t]);b.title=THEME_LABEL[t]+" (tocá para cambiar)";b.setAttribute("aria-label",THEME_LABEL[t]+". Cambiar tema")})}
-document.querySelectorAll("[data-theme-toggle]").forEach(b=>b.addEventListener("click",()=>{const t=getTheme();const n=THEMES[(THEMES.indexOf(t)+1)%3];applyTheme(n);toast(THEME_LABEL[n]+".")}));
-applyTheme(getTheme());
+/* theme: one tap flips what is on screen; until then it follows the device */
+const darkQuery=window.matchMedia?matchMedia("(prefers-color-scheme: dark)"):null;
+function savedTheme(){try{const t=localStorage.getItem("alterna:theme");return t==="light"||t==="dark"?t:null}catch(e){return null}}
+const effectiveTheme=()=>savedTheme()||(darkQuery&&darkQuery.matches?"dark":"light");
+function paintThemeButtons(){const dark=effectiveTheme()==="dark";
+  document.querySelectorAll("[data-theme-toggle]").forEach(b=>{b.innerHTML=ic(dark?"sun":"moon");const l=dark?"Activar modo claro":"Activar modo oscuro";b.title=l;b.setAttribute("aria-label",l)})}
+function setTheme(t){document.documentElement.setAttribute("data-theme",t);try{localStorage.setItem("alterna:theme",t)}catch(e){}
+  const m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==="dark"?"#141c28":"#1d6f72";paintThemeButtons()}
+document.querySelectorAll("[data-theme-toggle]").forEach(b=>b.addEventListener("click",()=>setTheme(effectiveTheme()==="dark"?"light":"dark")));
+if(darkQuery&&darkQuery.addEventListener)darkQuery.addEventListener("change",paintThemeButtons);
+paintThemeButtons();
 let tt;function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,3200)}
-function sheet(html,bind){const h=$("#sheetHost");h.innerHTML='<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">'+html+'</div></div>';
-  const close=()=>h.innerHTML="";$("#scrim").addEventListener("click",e=>{if(e.target.id==="scrim")close()});
-  h.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",close));bind&&bind(close);const f=h.querySelector("button");f&&f.focus()}
+function sheet(html,bind){const h=$("#sheetHost");const opener=document.activeElement;
+  h.innerHTML='<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">'+html.replace("<h3>",'<h3 id="sheetTitle">')+'</div></div>';
+  const close=()=>{h.innerHTML="";document.removeEventListener("keydown",onKey);if(opener&&document.contains(opener))opener.focus()};
+  const onKey=e=>{if(e.key==="Escape"){e.preventDefault();close();return}
+    if(e.key==="Tab"){const f=[...h.querySelectorAll("button")];if(!f.length)return;const first=f[0],last=f[f.length-1];
+      if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};
+  document.addEventListener("keydown",onKey);
+  $("#scrim").addEventListener("click",e=>{if(e.target.id==="scrim")close()});
+  h.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",close));bind&&bind(close);
+  const p=h.querySelector(".btn.primary,.btn.danger")||h.querySelector("button");p&&p.focus()}
 
 /* ---------- render: header ---------- */
 function renderMe(){$("#meInfo").innerHTML=avatar(S.me.id,S.me.name)+'<span style="min-width:0"><b>'+esc(S.me.name||"Tú")+'</b><br>'+esc(myTeam()?myTeam().name:"Sin equipo")+'</span>'}
@@ -118,10 +129,11 @@ function renderDays(){const days=weekDays(S.week);const cap=capacity();const anc
   $("#prevW").disabled=S.week<=0;$("#nextW").disabled=S.week>=S.cfg.horizonWeeks-1;
   if(!S.selDay||!days.includes(S.selDay))S.selDay=days.find(d=>d>=todayStr)||days[0];
   $("#days").innerHTML=days.map((d,i)=>{const n=bookingsOn(d).length;const pct=cap?Math.min(100,n/cap*100):0;const dt=parse(d);
-    return '<button class="day'+(d<todayStr?" past":"")+'" data-day="'+d+'" aria-pressed="'+(d===S.selDay)+'"><span class="dname">'+DAYN[i]+'</span><span class="dnum">'+dt.getDate()+'</span><span class="free num">'+Math.max(0,cap-n)+' libres</span><span class="bar"><i class="'+(pct>=85?"hot":"")+'" style="width:'+pct+'%"></i></span>'+(myOn(d)?'<span class="mine">'+esc(myOn(d).deskId)+'</span>':"")+(anc.includes(i)?'<span class="anchor" title="Día ancla de tu equipo"></span>':"")+'</button>'}).join("");
+    return '<button class="day'+(d<todayStr?" past":"")+'" data-day="'+d+'" aria-pressed="'+(d===S.selDay)+'" aria-label="'+esc(fmtDay(d))+", "+Math.max(0,cap-n)+" puestos libres"+(myOn(d)?", tenés el "+myOn(d).deskId:"")+(anc.includes(i)?", día ancla de tu equipo":"")+'"><span class="dname">'+DAYN[i]+'</span><span class="dnum">'+dt.getDate()+'</span><span class="free num">'+Math.max(0,cap-n)+' libres</span><span class="bar"><i class="'+(pct>=85?"hot":"")+'" style="width:'+pct+'%"></i></span>'+(myOn(d)?'<span class="mine">'+esc(myOn(d).deskId)+'</span>':"")+(anc.includes(i)?'<span class="anchor" title="Día ancla de tu equipo"></span>':"")+'</button>'}).join("");
   $("#days").querySelectorAll(".day").forEach(b=>b.addEventListener("click",()=>{S.selDay=b.dataset.day;renderReservar()}));
   const need=anc.length>0&&days.some((d,i)=>anc.includes(i)&&d>=todayStr&&!myOn(d));
-  $("#autoBtn").disabled=!S.canWrite||!need;$("#autoBtn").title=anc.length?"":"Elegí tu equipo en Mis reservas para tener días ancla";}
+  $("#autoBtn").disabled=!S.canWrite||!need;$("#autoBtn").title=anc.length?(need?"":"Ya reservaste tus días ancla de esta semana"):"Elegí tu equipo para tener días ancla";
+  $("#teamHint").hidden=!!myTeam()||!S.cfg.teams.length;}
 function renderZones(){const d=S.selDay;const taken=new Map(bookingsOn(d).map(b=>[b.deskId,b]));const past=d<todayStr;const mine=myOn(d);
   const di=(parse(d).getDay()+6)%7;const anc=anchorIdx();
   $("#planTitle").textContent="Plano del "+fmtDay(d);
@@ -129,10 +141,10 @@ function renderZones(){const d=S.selDay;const taken=new Map(bookingsOn(d).map(b=
   const all=desksOf(S.cfg);
   $("#zones").innerHTML=S.cfg.zones.map(z=>{const ds=all.filter(x=>x.zone===z.id);const free=ds.filter(x=>!x.off&&!taken.has(x.id)).length;
     return '<div class="zone"><h3>'+esc(z.name)+'<span class="num">'+free+' de '+ds.filter(x=>!x.off).length+' libres</span></h3><div class="desks">'+ds.map(x=>{
-      if(x.off)return '<div class="desk off" title="Fuera de servicio"><span class="code">'+x.id+'</span></div>';
+      if(x.off)return '<div class="desk off" role="img" aria-label="'+x.id+', fuera de servicio" title="Fuera de servicio"><span class="code">'+x.id+'</span></div>';
       const b=taken.get(x.id);
       if(b&&b.userId===S.me.id)return '<button class="desk mine" data-desk="'+x.id+'" aria-label="'+x.id+', tu puesto"><span class="code">'+x.id+'</span><span class="who">'+ic("check")+'Tú</span></button>';
-      if(b)return '<div class="desk taken" title="'+esc(nameOf(b.userId))+'"><span class="code">'+x.id+'</span><span class="who">'+avatar(b.userId,nameOf(b.userId),"sm")+esc(nameOf(b.userId).split(" ")[0])+'</span></div>';
+      if(b)return '<div class="desk taken" role="img" aria-label="'+x.id+', ocupado por '+esc(nameOf(b.userId))+'" title="'+esc(nameOf(b.userId))+'"><span class="code">'+x.id+'</span><span class="who">'+avatar(b.userId,nameOf(b.userId),"sm")+esc(nameOf(b.userId).split(" ")[0])+'</span></div>';
       return '<button class="desk free" data-desk="'+x.id+'"'+(past||!S.canWrite?" disabled":"")+ ' aria-label="'+x.id+', libre">'+ic("armchair")+'<span class="code">'+x.id+'</span></button>'}).join("")+'</div></div>'}).join("");
   $("#zones").querySelectorAll("button.desk").forEach(b=>b.addEventListener("click",()=>deskClick(b.dataset.desk)));}
 function renderReservar(){renderQuota();renderDays();renderZones()}
@@ -146,16 +158,16 @@ function deskClick(deskId){const d=S.selDay;const mine=myOn(d);
   const wc=weekCount(d)-(mine?1:0);const q=S.cfg.officeDays;let warn="";
   if(wc>=q)warn+='<p class="banner">Ya tenés '+wc+' días esta semana. El esquema es de '+q+' días presenciales; un día extra le quita lugar a otra persona.</p>';
   if(offA)warn+='<p class="banner">El '+DAYL[di]+' no es día ancla de '+esc(myTeam().name)+'. Podés reservar porque hay lugar.</p>';
-  sheet('<h3>Reservar '+esc(deskId)+'</h3><p class="sub">'+esc(fmtDay(d))+(mine?". Reemplaza tu reserva en "+esc(mine.deskId)+".":"")+'</p>'+warn+'<div class="row"><span class="spacer"></span><button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="okR">Confirmar reserva</button></div>',
+  sheet('<h3>Reservar '+esc(deskId)+'</h3><p class="sub">'+esc(fmtDay(d))+(mine?". Reemplaza tu reserva en "+esc(mine.deskId)+".":"")+'</p>'+warn+'<div class="row"><span class="spacer"></span><button class="btn ghost" data-close>Volver</button><button class="btn primary" id="okR">Reservar '+esc(deskId)+'</button></div>',
     close=>$("#okR").addEventListener("click",async()=>{close();await doClaim(d,deskId,mine)}));}
 async function doClaim(d,deskId,replace){if(S.busy)return;S.busy=true;
   try{if(replace)await store.cancel(replace.id);
     const ok=await store.claim(d,deskId,S.me.id);
-    if(!ok){if(replace)await store.claim(d,replace.deskId,S.me.id).catch(()=>{});toast(deskId+" se acaba de ocupar. Elegí otro puesto.");return}
+    if(!ok){if(replace)await store.claim(d,replace.deskId,S.me.id).catch(()=>{});toast("Alguien reservó "+deskId+" recién. Elegí otro puesto libre.");return}
     toast("Reservaste "+deskId+" para el "+fmtDay(d)+".")}
-  catch(e){toast(e&&e.message&&/Fuera del período|día pasado|lunes a viernes/.test(e.message)?e.message+".":"No se pudo guardar la reserva. Probá de nuevo.")}
+  catch(e){toast(e&&e.message&&/Fuera del período|día pasado|lunes a viernes/.test(e.message)?e.message+".":"No pudimos guardar la reserva. Revisá tu conexión y probá de nuevo.")}
   finally{S.busy=false}}
-async function doCancel(id){try{await store.cancel(id);toast("Puesto liberado.")}catch(e){toast("No se pudo liberar el puesto. Probá de nuevo.")}}
+async function doCancel(id){try{await store.cancel(id);toast("Liberaste el puesto. Ya lo puede reservar otra persona.")}catch(e){toast("No pudimos liberar el puesto. Revisá tu conexión y probá de nuevo.")}}
 
 /* Auto-book: same desk on every anchor day when possible, else nearest in same zone */
 async function autoBook(){const days=weekDays(S.week);const anc=anchorIdx();const targets=days.filter((d,i)=>anc.includes(i)&&d>=todayStr&&!myOn(d));
@@ -218,7 +230,7 @@ function renderPlan(){const cap=capacity();const k=S.cfg.officeDays;const teams=
       if(s.has(d))s.delete(d);else{if(s.size>=k){toast("Cada equipo tiene "+k+" días ancla. Quitá uno antes de sumar otro.");return}s.add(d)}dr[i].days=[...s].sort();renderPlan()}));
     box.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{const i=+b.closest("tr").dataset.i;ensure().splice(i,1);renderPlan()}));
     const sv=$("#saveTeams");sv&&sv.addEventListener("click",async()=>{const bad=S.draft.find(t=>t.days.length!==k);if(bad){toast(bad.name+" necesita "+k+" días ancla.");return}
-      const dr=S.draft;S.draft=null;try{await store.saveConfig({...S.cfg,teams:dr});toast("Equipos guardados.")}catch(e){S.draft=dr;toast("No se pudieron guardar los equipos.")}renderPlan()});
+      const dr=S.draft;S.draft=null;try{await store.saveConfig({...S.cfg,teams:dr});toast("Equipos guardados.")}catch(e){S.draft=dr;toast("No pudimos guardar los equipos. Revisá tu conexión y que seas administrador.")}renderPlan()});
     const dc=$("#discard");dc&&dc.addEventListener("click",()=>{S.draft=null;renderPlan()});}
   $("#addTeam").hidden=!ed;$("#optimize").hidden=!ed;$("#optimize").disabled=!teams.length;
   bars(DAYN.map((d,i)=>({label:DAYL[i][0].toUpperCase()+DAYL[i].slice(1),v:load[i]})),cap,$("#planChart"));}
@@ -240,21 +252,25 @@ function renderPeople(){const box=$("#peoplePanel");box.hidden=!S.canEdit;if(!S.
   $("#peopleRows").innerHTML=S.people.map(p=>{const t=S.cfg.teams.find(t=>t.id===p.team_id);const lastAdmin=p.role==="admin"&&admins<=1;
     return '<tr><td><span class="person">'+avatar(p.id,p.full_name)+'<span>'+esc(p.full_name||"Sin nombre")+(p.id===S.me.id?' <span class="sub">(vos)</span>':"")+'</span></span></td><td>'+esc(t?t.name:"Sin equipo")+'</td><td><select id="role-'+esc(p.id)+'" data-person="'+esc(p.id)+'" aria-label="Rol"'+(lastAdmin?' disabled title="Tiene que quedar al menos un administrador"':"")+'><option value="member"'+(p.role==="member"?" selected":"")+'>Colaborador</option><option value="admin"'+(p.role==="admin"?" selected":"")+'>Administrador</option></select></td></tr>'}).join("")||'<tr><td colspan="3" class="sub">Todavía no hay personas registradas.</td></tr>';
   $("#peopleRows").querySelectorAll("select[data-person]").forEach(sel=>sel.addEventListener("change",async()=>{
-    try{await store.updatePerson(sel.dataset.person,{role:sel.value});toast("Rol actualizado.")}catch(e){toast("No se pudo cambiar el rol.")}
+    try{await store.updatePerson(sel.dataset.person,{role:sel.value});toast("Rol actualizado.")}catch(e){toast("No pudimos cambiar el rol. Solo un administrador puede hacerlo.")}
     await loadPeople();render()}));}
 
 /* ---------- routing ---------- */
 function render(){renderMe();
   ({reservar:renderReservar,mias:renderMias,ocupacion:renderOcupacion,plan:renderPlan,config:renderConfig})[S.tab]();}
-function setTab(t){S.tab=t;document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===t));
+function setTab(t){S.tab=t;document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.tab===t;b.setAttribute("aria-selected",on);b.tabIndex=on?0:-1});
   document.querySelectorAll("section.view").forEach(s=>s.hidden=s.id!=="v-"+t);try{localStorage.setItem("alterna:tab",t)}catch(e){}render();window.scrollTo(0,0)}
 document.querySelectorAll("#tabs button").forEach(b=>b.addEventListener("click",()=>setTab(b.dataset.tab)));
+$("#tabs").addEventListener("keydown",e=>{const tabs=[...document.querySelectorAll("#tabs button")];const i=tabs.indexOf(document.activeElement);if(i<0)return;
+  let n=null;if(e.key==="ArrowRight")n=(i+1)%tabs.length;else if(e.key==="ArrowLeft")n=(i-1+tabs.length)%tabs.length;else if(e.key==="Home")n=0;else if(e.key==="End")n=tabs.length-1;
+  if(n!==null){e.preventDefault();tabs[n].focus();setTab(tabs[n].dataset.tab);tabs[n].focus()}});
+$("#pickTeam").addEventListener("click",()=>{setTab("mias");$("#myTeam").focus()});
 $("#prevW").addEventListener("click",()=>{if(S.week>0){S.week--;S.selDay=null;renderReservar()}});
 $("#nextW").addEventListener("click",()=>{if(S.week<S.cfg.horizonWeeks-1){S.week++;S.selDay=null;renderReservar()}});
 $("#autoBtn").addEventListener("click",autoBook);
-$("#myTeam").addEventListener("change",async e=>{S.profile={...S.profile,teamId:e.target.value};try{await store.saveProfile(S.profile);await loadPeople()}catch(x){toast("No se pudo guardar tu equipo.")}render()});
+$("#myTeam").addEventListener("change",async e=>{S.profile={...S.profile,teamId:e.target.value};try{await store.saveProfile(S.profile);await loadPeople()}catch(x){toast("No pudimos guardar tu equipo. Probá de nuevo.")}render()});
 $("#myName").addEventListener("change",async e=>{const n=e.target.value.trim();if(!n)return;
-  try{await store.updatePerson(S.me.id,{full_name:n});S.me.name=n;S.names[S.me.id]=n;toast("Nombre actualizado.");render()}catch(x){toast("No se pudo guardar tu nombre.")}});
+  try{await store.updatePerson(S.me.id,{full_name:n});S.me.name=n;S.names[S.me.id]=n;toast("Nombre actualizado.");render()}catch(x){toast("No pudimos guardar tu nombre. Probá de nuevo.")}});
 $("#addTeam").addEventListener("click",()=>{S.draft=S.draft||clone(S.cfg.teams);S.draft.push({id:uidGen(),name:"Nuevo equipo",people:5,days:COMBOS(S.cfg.officeDays)[0].slice()});renderPlan()});
 $("#optimize").addEventListener("click",()=>{const src=S.draft||S.cfg.teams;const before=Math.max(0,...loadOf(src));S.draft=optimize(clone(src),S.cfg.officeDays);const after=Math.max(0,...loadOf(S.draft));
   renderPlan();toast(after<before?"El pico baja de "+before+" a "+after+" personas. Revisá y guardá.":"La distribución ya era óptima ("+after+" personas en el pico).")});
@@ -262,7 +278,7 @@ $("#optimize").addEventListener("click",()=>{const src=S.draft||S.cfg.teams;cons
 $("#addZone").addEventListener("click",()=>{cfgDraft.zones.push({id:"Z"+(cfgDraft.zones.length+1),name:"Nueva zona",desks:8,off:""});renderConfig()});
 $("#saveCfg").addEventListener("click",async()=>{const ids=cfgDraft.zones.map(z=>z.id);if(new Set(ids).size!==ids.length){toast("Cada zona necesita un código distinto.");return}
   const c={...cfgDraft};if(c.officeDays!==S.cfg.officeDays)c.teams=S.cfg.teams.map(t=>({...t,days:t.days.slice(0,c.officeDays).concat(COMBOS(c.officeDays)[0].filter(d=>!t.days.includes(d))).slice(0,c.officeDays).sort()}));else c.teams=S.cfg.teams;
-  try{cfgDraft=null;await store.saveConfig(c);toast("Configuración guardada.");render()}catch(e){toast("No se pudo guardar la configuración.")}});
+  try{cfgDraft=null;await store.saveConfig(c);toast("Configuración guardada.");render()}catch(e){toast("No pudimos guardar la configuración. Revisá tu conexión y que seas administrador.")}});
 
 /* ---------- data wiring ---------- */
 let watchedTo=null,unwatch=null;
@@ -274,11 +290,11 @@ let namesPending=false;
 async function resolveNames(){if(namesPending)return;const miss=[...S.bookings.values()].some(b=>b.userId&&!(b.userId in S.names));
   if(!miss)return;namesPending=true;await loadPeople();namesPending=false;render()}
 function onConfig(c){S.cfg={...clone(DEFAULT_CFG),...(c||{})};if(!Array.isArray(S.cfg.teams))S.cfg.teams=[];if(S.week>S.cfg.horizonWeeks-1)S.week=Math.min(S.week,S.cfg.horizonWeeks-1);startWatch();render()}
-function colorFor(id){let h=0;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))%360;return "hsl("+h+" 45% 38%)"}
+function colorFor(id){let h=0;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))%360;return "hsl("+h+" 45% 32%)"}
 
 /* ---------- auth ---------- */
 const AUTH_MSG={"Invalid login credentials":"El correo o la contraseña no son correctos.","Email not confirmed":"Todavía no confirmaste tu correo. Revisá tu bandeja de entrada.","User already registered":"Ya existe una cuenta con ese correo. Ingresá o recuperá tu contraseña."};
-const authErr=e=>AUTH_MSG[e&&e.message]||(e&&/password/i.test(e.message)?"La contraseña tiene que tener al menos 6 caracteres.":(e&&/rate limit/i.test(e.message)?"Se enviaron demasiados correos. Esperá unos minutos y probá de nuevo.":"No se pudo completar. Revisá los datos y probá de nuevo."));
+const authErr=e=>AUTH_MSG[e&&e.message]||(e&&/password/i.test(e.message)?"La contraseña tiene que tener al menos 6 caracteres.":(e&&/rate limit/i.test(e.message)?"Se enviaron demasiados correos. Esperá unos minutos y probá de nuevo.":"No pudimos completar el pedido. Revisá los datos y probá de nuevo."));
 let recovering=false;
 function showAuth(mode){document.body.classList.add("signed-out");$("#auth").hidden=false;
   document.querySelectorAll("#auth form").forEach(f=>f.hidden=f.dataset.mode!==mode);$("#authMsg").textContent="";$("#authMsg").className="auth-msg";
