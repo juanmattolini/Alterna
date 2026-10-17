@@ -2,7 +2,7 @@
 
 Reserva y gestión de puestos de oficina para el esquema híbrido de **3 días presenciales y 2 de home office**. Funciona en el navegador de la computadora y del celular (se puede instalar como app desde el navegador).
 
-**App:** https://juanmattolini.github.io/alterna/
+**App:** https://juanmattolini.github.io/Alterna/
 
 ## Qué hace
 
@@ -37,8 +37,8 @@ La clave de `config.js` es la clave **publicable** de Supabase y puede estar en 
 
 En el panel de Supabase, **Authentication → URL Configuration**:
 
-- **Site URL:** `https://juanmattolini.github.io/alterna/`
-- **Redirect URLs:** agregar `https://juanmattolini.github.io/alterna/**`
+- **Site URL:** `https://juanmattolini.github.io/Alterna/`
+- **Redirect URLs:** agregar `https://juanmattolini.github.io/Alterna/**`
 
 Así los correos de confirmación y de recuperación de contraseña vuelven a la app.
 
