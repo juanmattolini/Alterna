@@ -21,7 +21,7 @@ const clone=o=>JSON.parse(JSON.stringify(o));
 const uidGen=()=>(window.crypto&&crypto.randomUUID)?crypto.randomUUID():"10000000-1000-4000-8000-100000000000".replace(/[018]/g,c=>(c^Math.random()*16>>c/4).toString(16));
 
 const S={cfg:clone(DEFAULT_CFG),bookings:new Map(),me:{id:null,name:"Tú",color:"#0f6b5c"},canEdit:true,canWrite:true,
-  profile:{teamId:""},names:{},people:[],week:0,selDay:null,tab:"reservar",draft:null,busy:false};
+  profile:{teamId:""},names:{},people:[],week:0,cal:(()=>{try{return localStorage.getItem("alterna:cal")!=="week"}catch(e){return true}})(),selDay:null,tab:"reservar",draft:null,busy:false};
 
 /* ---------- desks ---------- */
 function desksOf(cfg){const out=[];for(const z of cfg.zones){const off=new Set(String(z.off||"").split(/[ ,;]+/).filter(Boolean).map(Number));
@@ -85,8 +85,10 @@ let store=null,sb=null;
 
 
 /* ---------- derived ---------- */
-function rangeDays(){const out=[];for(let w=0;w<S.cfg.horizonWeeks;w++)for(let i=0;i<5;i++)out.push(ymd(addDays(thisMon,w*7+i)));return out}
+function rangeDays(){const out=[];for(let w=weekDays(0)[4]<todayStr&&S.cfg.horizonWeeks>1?1:0;w<S.cfg.horizonWeeks;w++)for(let i=0;i<5;i++)out.push(ymd(addDays(thisMon,w*7+i)));return out}
 function weekDays(w){return [0,1,2,3,4].map(i=>ymd(addDays(thisMon,w*7+i)))}
+function shownDays(){if(!S.cal)return weekDays(S.week);const out=[];for(let w=weekDays(0)[4]<todayStr&&S.cfg.horizonWeeks>1?1:0;w<S.cfg.horizonWeeks;w++)out.push(...weekDays(w));return out}
+const weekOf=d=>Math.floor((parse(d)-thisMon)/864e5/7);
 function bookingsOn(date){const r=[];for(const b of S.bookings.values())if(b.date===date)r.push(b);return r}
 function myBookings(){return[...S.bookings.values()].filter(b=>b.userId===S.me.id).sort((a,b)=>a.date.localeCompare(b.date))}
 function myOn(date){return myBookings().find(b=>b.date===date)}
@@ -134,16 +136,19 @@ function renderQuota(){const days=weekDays(S.week);const mine=days.filter(d=>myO
   const closed=days.filter(d=>closedOn(d)).length;
   const left=q-mine;const msg=(closed?"Esta semana la oficina cierra "+closed+" "+(closed===1?"día":"días")+". ":"")+(left>0?(left===1?"Te falta 1 día":"Te faltan "+left+" días")+" de oficina esta semana.":left===0?"Cumpliste tus "+q+" días presenciales de esta semana.":"Reservaste más días que el esquema "+q+"+"+(5-q)+".");
   $("#quota").innerHTML='<div><span class="sub">Semana '+(S.week===0?"actual":"del "+fmtDay(days[0]).replace(/^\S+ /,""))+'</span><br><strong class="num">'+mine+' de '+q+'</strong> <span class="sub">días presenciales</span></div><div class="pips" aria-hidden="true">'+pips+'</div><p class="sub" style="flex:1;min-width:200px">'+esc(msg)+'</p>'}
-function renderDays(){const days=weekDays(S.week);const cap=capacity();const anc=anchorIdx();
-  $("#weekLabel").textContent=fmtDay(days[0]).replace(/^\S+ /,"")+" al "+fmtDay(days[4]).replace(/^\S+ /,"");
-  $("#prevW").disabled=S.week<=0;$("#nextW").disabled=S.week>=S.cfg.horizonWeeks-1;
-  if(!S.selDay||!days.includes(S.selDay))S.selDay=days.find(d=>d>=todayStr)||days[0];
-  $("#days").innerHTML=days.map((d,i)=>{const n=bookingsOn(d).length;const pct=cap?Math.min(100,n/cap*100):0;const dt=parse(d);const cl=closedOn(d);
-    if(cl)return '<button class="day closed'+(d<todayStr?" past":"")+'" data-day="'+d+'" aria-pressed="'+(d===S.selDay)+'" aria-label="'+esc(fmtDay(d))+', oficina cerrada: '+esc(cl)+'"><span class="dname">'+DAYN[i]+'</span><span class="dnum">'+dt.getDate()+'</span><span class="free">'+ic("calendar-x")+'Cerrado</span><span class="why">'+esc(cl)+'</span></button>';
-    return '<button class="day'+(d<todayStr?" past":"")+'" data-day="'+d+'" aria-pressed="'+(d===S.selDay)+'" aria-label="'+esc(fmtDay(d))+", "+Math.max(0,cap-n)+" puestos libres"+(myOn(d)?", tenés el "+myOn(d).deskId:"")+(anc.includes(i)?", día ancla de tu equipo":"")+'"><span class="dname">'+DAYN[i]+'</span><span class="dnum">'+dt.getDate()+'</span><span class="free num">'+Math.max(0,cap-n)+' libres</span><span class="bar"><i class="'+(pct>=85?"hot":"")+'" style="width:'+pct+'%"></i></span>'+(myOn(d)?'<span class="mine">'+esc(myOn(d).deskId)+'</span>':"")+(anc.includes(i)?'<span class="anchor" title="Día ancla de tu equipo"></span>':"")+'</button>'}).join("");
-  $("#days").querySelectorAll(".day").forEach(b=>b.addEventListener("click",()=>{S.selDay=b.dataset.day;renderReservar()}));
-  const need=anc.length>0&&days.some((d,i)=>anc.includes(i)&&d>=todayStr&&!myOn(d)&&!closedOn(d));
-  $("#autoBtn").disabled=!S.canWrite||!need;$("#autoBtn").title=anc.length?(need?"":"Ya reservaste tus días ancla de esta semana"):"Elegí tu equipo para tener días ancla";
+function renderDays(){const days=shownDays();const cap=capacity();const anc=anchorIdx();
+  $("#weekLabel").textContent=fmtDay(days[0]).replace(/^\S+ /,"")+" al "+fmtDay(days[days.length-1]).replace(/^\S+ /,"");
+  $("#prevW").hidden=$("#nextW").hidden=S.cal;$("#prevW").disabled=S.week<=0;$("#nextW").disabled=S.week>=S.cfg.horizonWeeks-1;
+  document.querySelectorAll("[data-view]").forEach(b=>b.setAttribute("aria-pressed",(b.dataset.view==="cal")===S.cal));
+  if(!S.selDay||!days.includes(S.selDay))S.selDay=weekDays(S.week).find(d=>d>=todayStr&&!closedOn(d))||days.find(d=>d>=todayStr)||days[0];
+  S.week=weekOf(S.selDay);$("#days").classList.toggle("cal",S.cal);
+  const mon=(d,k)=>S.cal&&(k===0||parse(d).getDate()===1)?' <span class="mon">'+parse(d).toLocaleDateString("es-AR",{month:"short"}).replace(".","")+'</span>':"";
+  $("#days").innerHTML=(S.cal?DAYN.map(n=>'<span class="dhead" aria-hidden="true">'+n+'</span>').join(""):"")+days.map((d,k)=>{const i=k%5;const n=bookingsOn(d).length;const pct=cap?Math.min(100,n/cap*100):0;const dt=parse(d);const cl=closedOn(d);
+    if(cl)return '<button class="day closed'+(d<todayStr?" past":"")+'" data-day="'+d+'" aria-pressed="'+(d===S.selDay)+'" aria-label="'+esc(fmtDay(d))+', oficina cerrada: '+esc(cl)+'"><span class="dname">'+DAYN[i]+'</span><span class="dnum">'+dt.getDate()+mon(d,k)+'</span><span class="free">'+ic("calendar-x")+'Cerrado</span><span class="why">'+esc(cl)+'</span></button>';
+    return '<button class="day'+(d<todayStr?" past":"")+'" data-day="'+d+'" aria-pressed="'+(d===S.selDay)+'" aria-label="'+esc(fmtDay(d))+", "+Math.max(0,cap-n)+" puestos libres"+(myOn(d)?", tenés el "+myOn(d).deskId:"")+(anc.includes(i)?", día ancla de tu equipo":"")+'"><span class="dname">'+DAYN[i]+'</span><span class="dnum">'+dt.getDate()+mon(d,k)+'</span><span class="free num">'+Math.max(0,cap-n)+' libres</span><span class="bar"><i class="'+(pct>=85?"hot":"")+'" style="width:'+pct+'%"></i></span>'+(myOn(d)?'<span class="mine">'+esc(myOn(d).deskId)+'</span>':"")+(anc.includes(i)?'<span class="anchor" title="Día ancla de tu equipo"></span>':"")+'</button>'}).join("");
+  $("#days").querySelectorAll(".day").forEach(b=>b.addEventListener("click",()=>{S.selDay=b.dataset.day;S.week=weekOf(S.selDay);renderReservar()}));
+  const need=anc.length>0&&days.some((d,k)=>anc.includes(k%5)&&d>=todayStr&&!myOn(d)&&!closedOn(d));
+  $("#autoBtn").disabled=!S.canWrite||!need;$("#autoBtn").title=anc.length?(need?"":"Ya reservaste tus días ancla"+(S.cal?"":" de esta semana")):"Elegí tu equipo para tener días ancla";
   $("#teamHint").hidden=!!myTeam()||!S.cfg.teams.length;}
 function renderZones(){const d=S.selDay;const taken=new Map(bookingsOn(d).map(b=>[b.deskId,b]));const past=d<todayStr;const mine=myOn(d);
   const di=(parse(d).getDay()+6)%7;const anc=anchorIdx();
@@ -182,16 +187,16 @@ async function doClaim(d,deskId,replace){if(S.busy)return;S.busy=true;
 async function doCancel(id){try{await store.cancel(id);toast("Liberaste el puesto. Ya lo puede reservar otra persona.")}catch(e){toast("No pudimos liberar el puesto. Revisá tu conexión y probá de nuevo.")}}
 
 /* Auto-book: same desk on every anchor day when possible, else nearest in same zone */
-async function autoBook(){const days=weekDays(S.week);const anc=anchorIdx();const targets=days.filter((d,i)=>anc.includes(i)&&d>=todayStr&&!myOn(d)&&!closedOn(d));
+async function autoBook(){const days=shownDays();const anc=anchorIdx();const targets=days.filter((d,k)=>anc.includes(k%5)&&d>=todayStr&&!myOn(d)&&!closedOn(d));
   if(!targets.length)return;const act=activeDesks();
   const prev=myBookings().map(b=>b.deskId);const score={};prev.forEach(x=>score[x]=(score[x]||0)+1);
   const freeOn=d=>{const t=new Set(bookingsOn(d).map(b=>b.deskId));return act.filter(x=>!t.has(x.id))};
   const common=act.filter(x=>targets.every(d=>freeOn(d).some(f=>f.id===x.id))).sort((a,b)=>(score[b.id]||0)-(score[a.id]||0));
   let done=[],fail=[];
-  for(const d of targets){if(weekCount(d)>=S.cfg.officeDays)break;
+  for(const d of targets){if(weekCount(d)>=S.cfg.officeDays)continue;
     let pick=common[0];if(!pick||!freeOn(d).some(f=>f.id===pick.id)){const f=freeOn(d);const z=common[0]?common[0].zone:(prev[0]||"").split("-")[0];pick=f.find(x=>x.zone===z)||f[0]}
     if(!pick){fail.push(d);continue}
-    try{const ok=await store.claim(d,pick.id,S.me.id);ok?done.push(DAYN[(parse(d).getDay()+6)%7]+" "+pick.id):fail.push(d)}catch(e){fail.push(d)}}
+    try{const ok=await store.claim(d,pick.id,S.me.id);ok?done.push(DAYN[(parse(d).getDay()+6)%7]+" "+parse(d).getDate()+" "+pick.id):fail.push(d)}catch(e){fail.push(d)}}
   toast(done.length?"Reservado: "+done.join(", ")+(fail.length?". Sin lugar en "+fail.length+" día(s).":"."):"No había puestos libres en tus días ancla.")}
 
 /* ---------- render: mis reservas ---------- */
@@ -303,6 +308,7 @@ $("#tabs").addEventListener("keydown",e=>{const tabs=[...document.querySelectorA
   let n=null;if(e.key==="ArrowRight")n=(i+1)%tabs.length;else if(e.key==="ArrowLeft")n=(i-1+tabs.length)%tabs.length;else if(e.key==="Home")n=0;else if(e.key==="End")n=tabs.length-1;
   if(n!==null){e.preventDefault();tabs[n].focus();setTab(tabs[n].dataset.tab);tabs[n].focus()}});
 $("#pickTeam").addEventListener("click",()=>{setTab("mias");$("#myTeam").focus()});
+document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>{S.cal=b.dataset.view==="cal";try{localStorage.setItem("alterna:cal",S.cal?"cal":"week")}catch(e){}renderReservar()}));
 $("#prevW").addEventListener("click",()=>{if(S.week>0){S.week--;S.selDay=null;renderReservar()}});
 $("#nextW").addEventListener("click",()=>{if(S.week<S.cfg.horizonWeeks-1){S.week++;S.selDay=null;renderReservar()}});
 $("#autoBtn").addEventListener("click",autoBook);

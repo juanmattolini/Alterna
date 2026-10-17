@@ -232,6 +232,13 @@ a:focus-visible,.desk:focus-visible,.day:focus-visible,[role=tab]:focus-visible{
   #teamsBox .tablewrap{overflow:visible}
 }
 /* closures & recurring */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--surface)}
+.seg button{border:0;background:none;color:var(--muted);font:inherit;font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;min-height:32px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink,#fff)}
+.days.cal{row-gap:8px}
+.days .dhead{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;padding:0 8px}
+.days.cal .day .dname{display:none}
+.day .mon{font-size:12px;font-weight:600;color:var(--muted);font-family:var(--f-body,inherit)}
 .day.closed{background:repeating-linear-gradient(135deg,var(--taken),var(--taken) 6px,var(--surface) 6px,var(--surface) 12px);border-color:var(--line)}
 .day.closed .free{display:flex;align-items:center;gap:4px;font-weight:700;color:var(--ink)}
 .day.closed .free .ic{width:14px;height:14px}
@@ -340,6 +347,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
           <button class="icon-btn" id="nextW" aria-label="Semana siguiente"><svg class="ic" aria-hidden="true"><use href="#i-chevron-right"/></svg></button>
           <span class="label" id="weekLabel"></span>
         </div>
+        <div class="seg" role="group" aria-label="Vista del calendario"><button type="button" data-view="week" aria-pressed="false">Semana</button><button type="button" data-view="cal" aria-pressed="true">Todas las semanas</button></div>
         <span class="spacer"></span>
         <button class="btn primary" id="autoBtn"><svg class="ic" aria-hidden="true"><use href="#i-wand-sparkles"/></svg>Reservar mis días de equipo</button>
       </div>
