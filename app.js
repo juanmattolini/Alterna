@@ -3,7 +3,7 @@
 const DAYN=["Lun","Mar","Mié","Jue","Vie"];
 const DAYL=["lunes","martes","miércoles","jueves","viernes"];
 const MON=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
-const DEFAULT_CFG={officeDays:3,horizonWeeks:3,offAnchor:"allow",
+const DEFAULT_CFG={officeDays:3,horizonWeeks:3,offAnchor:"allow",closures:{},
   zones:[{id:"N",name:"Zona Norte",desks:16,off:""},{id:"S",name:"Zona Sur",desks:16,off:""},{id:"Q",name:"Sala silenciosa",desks:8,off:""}],
   teams:[]};
 const EXAMPLE_TEAMS=[["Producto",12],["Tecnología",18],["Comercial",14],["Operaciones",10],["Finanzas",6],["Personas",4]];
@@ -35,11 +35,12 @@ function sbStore(sb,uid){
   const mapB=r=>({id:r.id,date:r.date,deskId:r.desk_id,userId:r.user_id});
   const fail=r=>{if(r.error)throw r.error;return r};
   async function loadCfg(){
-    const [c,z,t]=await Promise.all([sb.from("office_config").select("*").eq("id",1).maybeSingle(),sb.from("zones").select("*").order("sort"),sb.from("teams").select("*").order("created_at")]);
-    [c,z,t].forEach(fail);
+    const [c,z,t,cl]=await Promise.all([sb.from("office_config").select("*").eq("id",1).maybeSingle(),sb.from("zones").select("*").order("sort"),sb.from("teams").select("*").order("created_at"),sb.from("closures").select("date,reason").order("date")]);
+    [c,z,t,cl].forEach(fail);
     const cfg={officeDays:c.data?c.data.office_days:3,horizonWeeks:c.data?c.data.horizon_weeks:3,offAnchor:c.data?c.data.off_anchor:"allow",
       zones:z.data.map(r=>({id:r.id,name:r.name,desks:r.desks,off:(r.off_desks||[]).join(", ")})),
-      teams:t.data.map(r=>({id:r.id,name:r.name,people:r.people,days:(r.days||[]).slice().sort()}))};
+      teams:t.data.map(r=>({id:r.id,name:r.name,people:r.people,days:(r.days||[]).slice().sort()})),
+      closures:Object.fromEntries(cl.data.map(r=>[r.date,r.reason]))};
     cfgCache=cfg;ccb&&ccb(clone(cfg));}
   async function loadB(){if(!range)return;const r=await sb.from("bookings").select("id,date,desk_id,user_id").gte("date",range[0]).lte("date",range[1]);
     if(r.error){toast("No pudimos cargar las reservas. Recargá la página.");return}bcb&&bcb(r.data.map(mapB))}
@@ -50,6 +51,7 @@ function sbStore(sb,uid){
     .on("postgres_changes",{event:"*",schema:"public",table:"zones"},rc)
     .on("postgres_changes",{event:"*",schema:"public",table:"teams"},rc)
     .on("postgres_changes",{event:"*",schema:"public",table:"office_config"},rc)
+    .on("postgres_changes",{event:"*",schema:"public",table:"closures"},()=>{rc();rb()})
     .subscribe();
   document.addEventListener("visibilitychange",()=>{if(!document.hidden){rb();rc()}});
   return{
@@ -69,6 +71,12 @@ function sbStore(sb,uid){
       await loadCfg()},
     async loadProfile(){const r=await sb.from("profiles").select("team_id").eq("id",uid).maybeSingle();return{teamId:(r.data&&r.data.team_id)||""}},
     async saveProfile(p){fail(await sb.from("profiles").update({team_id:p.teamId||null}).eq("id",uid))},
+    async loadRecurring(){const r=await sb.from("recurring").select("desk_id,days").eq("user_id",uid).maybeSingle();fail(r);return r.data?{deskId:r.data.desk_id,days:(r.data.days||[]).slice().sort()}:null},
+    async saveRecurring(rule){fail(await sb.from("recurring").upsert({user_id:uid,desk_id:rule.deskId,days:rule.days}));
+      const r=await sb.rpc("apply_my_recurring");fail(r);rb();return r.data||0},
+    async deleteRecurring(){fail(await sb.from("recurring").delete().eq("user_id",uid))},
+    async addClosure(date,reason){fail(await sb.from("closures").upsert({date,reason}));rb();await loadCfg()},
+    async removeClosure(date){fail(await sb.from("closures").delete().eq("date",date));await loadCfg()},
     async loadPeople(){const r=await sb.from("profiles").select("id,full_name,role,team_id").order("full_name");fail(r);return r.data},
     async updatePerson(id,patch){fail(await sb.from("profiles").update(patch).eq("id",id))}
   };
@@ -120,23 +128,27 @@ function sheet(html,bind){const h=$("#sheetHost");const opener=document.activeEl
 function renderMe(){$("#meInfo").innerHTML=avatar(S.me.id,S.me.name)+'<span style="min-width:0"><b>'+esc(S.me.name||"Tú")+'</b><br>'+esc(myTeam()?myTeam().name:"Sin equipo")+'</span>'}
 
 /* ---------- render: reservar ---------- */
+const closedOn=d=>S.cfg.closures&&S.cfg.closures[d];
 function renderQuota(){const days=weekDays(S.week);const mine=days.filter(d=>myOn(d)).length;const q=S.cfg.officeDays;
   let pips="";for(let i=0;i<Math.max(q,mine);i++)pips+='<i class="pip '+(i<mine?(i>=q?"over":"on"):"")+'"></i>';
-  const left=q-mine;const msg=left>0?"Te faltan "+left+" "+(left===1?"día":"días")+" de oficina esta semana.":left===0?"Cumpliste tus "+q+" días presenciales de esta semana.":"Reservaste más días que el esquema "+q+"+"+(5-q)+".";
+  const closed=days.filter(d=>closedOn(d)).length;
+  const left=q-mine;const msg=(closed?"Esta semana la oficina cierra "+closed+" "+(closed===1?"día":"días")+". ":"")+(left>0?(left===1?"Te falta 1 día":"Te faltan "+left+" días")+" de oficina esta semana.":left===0?"Cumpliste tus "+q+" días presenciales de esta semana.":"Reservaste más días que el esquema "+q+"+"+(5-q)+".");
   $("#quota").innerHTML='<div><span class="sub">Semana '+(S.week===0?"actual":"del "+fmtDay(days[0]).replace(/^\S+ /,""))+'</span><br><strong class="num">'+mine+' de '+q+'</strong> <span class="sub">días presenciales</span></div><div class="pips" aria-hidden="true">'+pips+'</div><p class="sub" style="flex:1;min-width:200px">'+esc(msg)+'</p>'}
 function renderDays(){const days=weekDays(S.week);const cap=capacity();const anc=anchorIdx();
   $("#weekLabel").textContent=fmtDay(days[0]).replace(/^\S+ /,"")+" al "+fmtDay(days[4]).replace(/^\S+ /,"");
   $("#prevW").disabled=S.week<=0;$("#nextW").disabled=S.week>=S.cfg.horizonWeeks-1;
   if(!S.selDay||!days.includes(S.selDay))S.selDay=days.find(d=>d>=todayStr)||days[0];
-  $("#days").innerHTML=days.map((d,i)=>{const n=bookingsOn(d).length;const pct=cap?Math.min(100,n/cap*100):0;const dt=parse(d);
+  $("#days").innerHTML=days.map((d,i)=>{const n=bookingsOn(d).length;const pct=cap?Math.min(100,n/cap*100):0;const dt=parse(d);const cl=closedOn(d);
+    if(cl)return '<button class="day closed'+(d<todayStr?" past":"")+'" data-day="'+d+'" aria-pressed="'+(d===S.selDay)+'" aria-label="'+esc(fmtDay(d))+', oficina cerrada: '+esc(cl)+'"><span class="dname">'+DAYN[i]+'</span><span class="dnum">'+dt.getDate()+'</span><span class="free">'+ic("calendar-x")+'Cerrado</span><span class="why">'+esc(cl)+'</span></button>';
     return '<button class="day'+(d<todayStr?" past":"")+'" data-day="'+d+'" aria-pressed="'+(d===S.selDay)+'" aria-label="'+esc(fmtDay(d))+", "+Math.max(0,cap-n)+" puestos libres"+(myOn(d)?", tenés el "+myOn(d).deskId:"")+(anc.includes(i)?", día ancla de tu equipo":"")+'"><span class="dname">'+DAYN[i]+'</span><span class="dnum">'+dt.getDate()+'</span><span class="free num">'+Math.max(0,cap-n)+' libres</span><span class="bar"><i class="'+(pct>=85?"hot":"")+'" style="width:'+pct+'%"></i></span>'+(myOn(d)?'<span class="mine">'+esc(myOn(d).deskId)+'</span>':"")+(anc.includes(i)?'<span class="anchor" title="Día ancla de tu equipo"></span>':"")+'</button>'}).join("");
   $("#days").querySelectorAll(".day").forEach(b=>b.addEventListener("click",()=>{S.selDay=b.dataset.day;renderReservar()}));
-  const need=anc.length>0&&days.some((d,i)=>anc.includes(i)&&d>=todayStr&&!myOn(d));
+  const need=anc.length>0&&days.some((d,i)=>anc.includes(i)&&d>=todayStr&&!myOn(d)&&!closedOn(d));
   $("#autoBtn").disabled=!S.canWrite||!need;$("#autoBtn").title=anc.length?(need?"":"Ya reservaste tus días ancla de esta semana"):"Elegí tu equipo para tener días ancla";
   $("#teamHint").hidden=!!myTeam()||!S.cfg.teams.length;}
 function renderZones(){const d=S.selDay;const taken=new Map(bookingsOn(d).map(b=>[b.deskId,b]));const past=d<todayStr;const mine=myOn(d);
   const di=(parse(d).getDay()+6)%7;const anc=anchorIdx();
   $("#planTitle").textContent="Plano del "+fmtDay(d);
+  if(closedOn(d)){$("#planSub").textContent="No se puede reservar este día.";$("#zones").innerHTML='<div class="empty" style="grid-column:1/-1">'+ic("party-popper","big")+'<b>La oficina está cerrada</b><span>'+esc(closedOn(d))+'</span></div>';return}
   $("#planSub").textContent=past?"Este día ya pasó.":mine?"Tenés el puesto "+mine.deskId+". Tocalo para liberarlo.":(anc.length&&!anc.includes(di)?"No es un día ancla de tu equipo. ":"")+"Elegí un puesto libre para reservarlo.";
   const all=desksOf(S.cfg);
   $("#zones").innerHTML=S.cfg.zones.map(z=>{const ds=all.filter(x=>x.zone===z.id);const free=ds.filter(x=>!x.off&&!taken.has(x.id)).length;
@@ -150,7 +162,7 @@ function renderZones(){const d=S.selDay;const taken=new Map(bookingsOn(d).map(b=
 function renderReservar(){renderQuota();renderDays();renderZones()}
 
 function weekCount(date){const m=monday(parse(date));const ds=[0,1,2,3,4].map(i=>ymd(addDays(m,i)));return ds.filter(d=>myOn(d)).length}
-function deskClick(deskId){const d=S.selDay;const mine=myOn(d);
+function deskClick(deskId){const d=S.selDay;const mine=myOn(d);if(closedOn(d))return;
   if(mine&&mine.deskId===deskId){sheet('<h3>Liberar '+esc(deskId)+'</h3><p class="sub">El puesto del '+esc(fmtDay(d))+' queda libre para otra persona.</p><div class="row"><span class="spacer"></span><button class="btn ghost" data-close>Volver</button><button class="btn danger" id="okC">Liberar puesto</button></div>',
     close=>$("#okC").addEventListener("click",async()=>{close();await doCancel(mine.id)}));return}
   const di=(parse(d).getDay()+6)%7;const anc=anchorIdx();const offA=anc.length&&!anc.includes(di);
@@ -170,7 +182,7 @@ async function doClaim(d,deskId,replace){if(S.busy)return;S.busy=true;
 async function doCancel(id){try{await store.cancel(id);toast("Liberaste el puesto. Ya lo puede reservar otra persona.")}catch(e){toast("No pudimos liberar el puesto. Revisá tu conexión y probá de nuevo.")}}
 
 /* Auto-book: same desk on every anchor day when possible, else nearest in same zone */
-async function autoBook(){const days=weekDays(S.week);const anc=anchorIdx();const targets=days.filter((d,i)=>anc.includes(i)&&d>=todayStr&&!myOn(d));
+async function autoBook(){const days=weekDays(S.week);const anc=anchorIdx();const targets=days.filter((d,i)=>anc.includes(i)&&d>=todayStr&&!myOn(d)&&!closedOn(d));
   if(!targets.length)return;const act=activeDesks();
   const prev=myBookings().map(b=>b.deskId);const score={};prev.forEach(x=>score[x]=(score[x]||0)+1);
   const freeOn=d=>{const t=new Set(bookingsOn(d).map(b=>b.deskId));return act.filter(x=>!t.has(x.id))};
@@ -183,13 +195,35 @@ async function autoBook(){const days=weekDays(S.week);const anc=anchorIdx();cons
   toast(done.length?"Reservado: "+done.join(", ")+(fail.length?". Sin lugar en "+fail.length+" día(s).":"."):"No había puestos libres en tus días ancla.")}
 
 /* ---------- render: mis reservas ---------- */
+/* ---------- reserva recurrente ---------- */
+let recDraft=null;
+function renderRecurring(){const k=S.cfg.officeDays;const rule=S.rec;
+  if(!recDraft)recDraft=rule?clone(rule):{deskId:(myBookings()[0]||{}).deskId||(activeDesks()[0]||{}).id||"",days:anchorIdx().slice(0,k)};
+  $("#recDays").innerHTML=DAYN.map((dn,i)=>'<button type="button" class="dchip'+(recDraft.days.includes(i)?" on":"")+'" data-d="'+i+'" aria-pressed="'+recDraft.days.includes(i)+'" aria-label="'+DAYL[i]+'">'+dn[0]+'</button>').join("");
+  $("#recDays").querySelectorAll(".dchip").forEach(b=>b.addEventListener("click",()=>{const d=+b.dataset.d;const set=new Set(recDraft.days);
+    if(set.has(d))set.delete(d);else{if(set.size>=k){toast("El esquema es de "+k+" días presenciales. Quitá un día antes de sumar otro.");return}set.add(d)}
+    recDraft.days=[...set].sort();renderRecurring()}));
+  const sel=$("#recDesk");const prev=recDraft.deskId;
+  sel.innerHTML=S.cfg.zones.map(z=>'<optgroup label="'+esc(z.name)+'">'+activeDesks().filter(x=>x.zone===z.id).map(x=>'<option value="'+x.id+'">'+x.id+'</option>').join("")+'</optgroup>').join("");
+  sel.value=prev;if(sel.value!==prev&&sel.options.length){recDraft.deskId=sel.value}
+  const dirty=!rule||rule.deskId!==recDraft.deskId||rule.days.join()!==recDraft.days.join();
+  $("#recStatus").innerHTML=rule?ic("repeat")+'<span>Activa: todos los <b>'+rule.days.map(i=>DAYL[i]).join(", ")+'</b> en <b>'+esc(rule.deskId)+'</b>. Se reserva sola hasta '+S.cfg.horizonWeeks+' semanas adelante.</span>':'<span>No tenés reserva recurrente.</span>';
+  $("#recSave").disabled=!recDraft.days.length||!recDraft.deskId||!dirty;$("#recSave").lastChild.textContent=rule?"Guardar cambios":"Activar reserva recurrente";
+  $("#recOff").hidden=!rule;}
+async function saveRecurring(){try{const n=await store.saveRecurring(recDraft);S.rec=clone(recDraft);recDraft=null;
+    toast(n?"Listo. Reservamos "+n+" "+(n===1?"día":"días")+" de acá a "+S.cfg.horizonWeeks+" semanas.":"Reserva recurrente guardada. No había días nuevos para reservar.");render()}
+  catch(e){toast("No pudimos guardar la reserva recurrente. Revisá tu conexión y probá de nuevo.")}}
+async function stopRecurring(){sheet('<h3>Desactivar reserva recurrente</h3><p class="sub">Las próximas semanas ya no se van a reservar solas. Las reservas que ya tenés se mantienen; podés liberarlas desde la lista.</p><div class="row"><span class="spacer"></span><button class="btn ghost" data-close>Volver</button><button class="btn danger" id="okOff">Desactivar</button></div>',
+  close=>$("#okOff").addEventListener("click",async()=>{close();try{await store.deleteRecurring();S.rec=null;recDraft=null;toast("Desactivaste la reserva recurrente.");render()}catch(e){toast("No pudimos desactivarla. Probá de nuevo.")}}))}
+
 function renderMias(){const list=myBookings().filter(b=>b.date>=todayStr);
   $("#myList").innerHTML=list.length?list.map(b=>{const z=S.cfg.zones.find(z=>z.id===b.deskId.split("-")[0]);
-    return '<div class="item"><span class="tag">'+esc(b.deskId)+'</span><div class="grow"><b>'+esc(fmtDay(b.date))+'</b><span class="sub">'+esc(z?z.name:"")+(b.date===todayStr?" · hoy":"")+'</span></div><button class="btn danger" data-cancel="'+esc(b.id)+'">Liberar</button></div>'}).join("")
+    return '<div class="item"><span class="tag">'+esc(b.deskId)+'</span><div class="grow"><b>'+esc(fmtDay(b.date))+'</b><span class="sub">'+esc(z?z.name:"")+(b.date===todayStr?" · hoy":"")+(S.rec&&S.rec.days.includes((parse(b.date).getDay()+6)%7)?' · '+ic("repeat","xs")+' recurrente':"")+'</span></div><button class="btn danger" data-cancel="'+esc(b.id)+'">Liberar</button></div>'}).join("")
     :'<div class="empty">'+DESK_ILLUS+'Todavía no tenés reservas. Andá a Reservar y elegí un puesto, o usá “Reservar mis días de equipo”.</div>';
   $("#myList").querySelectorAll("[data-cancel]").forEach(b=>b.addEventListener("click",()=>doCancel(b.dataset.cancel)));
   const sel=$("#myTeam");sel.innerHTML='<option value="">Sin equipo</option>'+S.cfg.teams.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+' ('+t.days.map(i=>DAYN[i]).join(", ")+')</option>').join("");
   sel.value=myTeam()?S.profile.teamId:"";
+  renderRecurring();
   if(document.activeElement!==$("#myName"))$("#myName").value=S.me.name||"";}
 
 /* ---------- render: ocupación ---------- */
@@ -244,9 +278,13 @@ function renderConfig(){cfgDraft=cfgDraft||clone(S.cfg);const ed=S.canEdit;
   $("#zoneRows").querySelectorAll("input").forEach(inp=>inp.addEventListener("change",()=>{const z=cfgDraft.zones[+inp.closest("tr").dataset.i];const f=inp.dataset.f;
     z[f]=f==="desks"?Math.max(0,Math.min(200,+inp.value||0)):f==="id"?(inp.value.toUpperCase().replace(/[^A-Z0-9]/g,"")||"Z"):inp.value}));
   $("#zoneRows").querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{cfgDraft.zones.splice(+b.closest("tr").dataset.i,1);renderConfig()}));
-  renderPeople();
+  renderPeople();renderClosures();
   $("#cfgNote").textContent=ed?"Total: "+desksOf(cfgDraft).filter(d=>!d.off).length+" puestos activos. Las reservas existentes se mantienen aunque cambies las zonas.":"Solo quien administra la oficina puede cambiar esta configuración.";}
 
+function renderClosures(){const ed=S.canEdit;const list=Object.entries(S.cfg.closures||{}).filter(([d])=>d>=todayStr).sort();
+  $("#clForm").hidden=!ed;
+  $("#clList").innerHTML=list.length?list.map(([d,r])=>'<div class="item">'+ic("calendar-x")+'<div class="grow"><b>'+esc(fmtDay(d))+'</b><span class="sub">'+esc(r)+'</span></div>'+(ed?'<button class="btn ghost danger" data-cl="'+d+'" aria-label="Quitar cierre del '+esc(fmtDay(d))+'">'+ic("trash-2")+'<span class="hide-sm">Quitar</span></button>':"")+'</div>').join(""):'<p class="sub">No hay feriados ni cierres cargados.</p>';
+  $("#clList").querySelectorAll("[data-cl]").forEach(b=>b.addEventListener("click",async()=>{try{await store.removeClosure(b.dataset.cl);toast("Quitaste el cierre. Ese día ya se puede reservar.")}catch(e){toast("No pudimos quitar el cierre. Revisá que seas administrador.")}}));}
 function renderPeople(){const box=$("#peoplePanel");box.hidden=!S.canEdit;if(!S.canEdit)return;
   const admins=S.people.filter(p=>p.role==="admin").length;
   $("#peopleRows").innerHTML=S.people.map(p=>{const t=S.cfg.teams.find(t=>t.id===p.team_id);const lastAdmin=p.role==="admin"&&admins<=1;
@@ -271,6 +309,15 @@ $("#autoBtn").addEventListener("click",autoBook);
 $("#myTeam").addEventListener("change",async e=>{S.profile={...S.profile,teamId:e.target.value};try{await store.saveProfile(S.profile);await loadPeople()}catch(x){toast("No pudimos guardar tu equipo. Probá de nuevo.")}render()});
 $("#myName").addEventListener("change",async e=>{const n=e.target.value.trim();if(!n)return;
   try{await store.updatePerson(S.me.id,{full_name:n});S.me.name=n;S.names[S.me.id]=n;toast("Nombre actualizado.");render()}catch(x){toast("No pudimos guardar tu nombre. Probá de nuevo.")}});
+$("#recDesk").addEventListener("change",e=>{recDraft.deskId=e.target.value;renderRecurring()});
+$("#recSave").addEventListener("click",saveRecurring);
+$("#recOff").addEventListener("click",stopRecurring);
+$("#clForm").addEventListener("submit",e=>{e.preventDefault();const d=$("#clDate").value;const r=$("#clReason").value.trim()||"Oficina cerrada";
+  if(!d){toast("Elegí la fecha del cierre.");return}const wd=parse(d).getDay();if(wd===0||wd===6){toast("Ese día es fin de semana: la oficina ya está cerrada.");return}
+  if(d<todayStr){toast("Elegí una fecha de hoy en adelante.");return}
+  const n=bookingsOn(d).length;
+  sheet('<h3>Cerrar la oficina el '+esc(fmtDay(d))+'</h3><p class="sub">Motivo: '+esc(r)+'.'+(n?' Se van a cancelar '+n+' '+(n===1?"reserva":"reservas")+' de ese día.':"")+'</p><div class="row"><span class="spacer"></span><button class="btn ghost" data-close>Volver</button><button class="btn primary" id="okCl">Marcar como cerrado</button></div>',
+    close=>$("#okCl").addEventListener("click",async()=>{close();try{await store.addClosure(d,r);$("#clDate").value="";$("#clReason").value="";toast("Listo. La oficina figura cerrada el "+fmtDay(d)+".")}catch(e){toast("No pudimos guardar el cierre. Revisá que seas administrador.")}}))});
 $("#addTeam").addEventListener("click",()=>{S.draft=S.draft||clone(S.cfg.teams);S.draft.push({id:uidGen(),name:"Nuevo equipo",people:5,days:COMBOS(S.cfg.officeDays)[0].slice()});renderPlan()});
 $("#optimize").addEventListener("click",()=>{const src=S.draft||S.cfg.teams;const before=Math.max(0,...loadOf(src));S.draft=optimize(clone(src),S.cfg.officeDays);const after=Math.max(0,...loadOf(S.draft));
   renderPlan();toast(after<before?"El pico baja de "+before+" a "+after+" personas. Revisá y guardá.":"La distribución ya era óptima ("+after+" personas en el pico).")});
@@ -327,6 +374,7 @@ async function onSession(session){
   store=sbStore(sb,u.id);
   await loadPeople();
   try{S.profile=await store.loadProfile()}catch(e){S.profile={teamId:""}}
+  try{S.rec=await store.loadRecurring()}catch(e){S.rec=null}
   store.watchConfig(onConfig);setTab(S.tab);
 }
 

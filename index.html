@@ -231,6 +231,16 @@ a:focus-visible,.desk:focus-visible,.day:focus-visible,[role=tab]:focus-visible{
   #teamsBox td:nth-child(4){grid-column:2/3;grid-row:2/4;align-self:center}
   #teamsBox .tablewrap{overflow:visible}
 }
+/* closures & recurring */
+.day.closed{background:repeating-linear-gradient(135deg,var(--taken),var(--taken) 6px,var(--surface) 6px,var(--surface) 12px);border-color:var(--line)}
+.day.closed .free{display:flex;align-items:center;gap:4px;font-weight:700;color:var(--ink)}
+.day.closed .free .ic{width:14px;height:14px}
+.day .why{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ic.big{width:40px;height:40px;color:var(--accent)}
+.ic.xs{width:13px;height:13px;vertical-align:-2px}
+.rec-status{display:flex;align-items:flex-start;gap:8px;margin:0;font-size:14px}
+.rec-status .ic{color:var(--accent);margin-top:2px}
+.item>.ic{color:var(--muted)}
 /* auth */
 body.signed-out header.top,body.signed-out main{display:none}
 #auth{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding-block:32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
@@ -352,6 +362,13 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
   <section class="view" role="tabpanel" aria-labelledby="tab-mias" id="v-mias" hidden>
     <div class="panel"><h2>Mis reservas</h2><p class="sub">Tus próximos días en la oficina. Liberá el puesto si cambiás de plan, así lo puede usar otra persona.</p></div>
     <div class="list" id="myList"></div>
+    <div class="panel" id="recPanel" style="display:grid;gap:12px">
+      <div><h2>Reserva recurrente</h2><p class="sub">Elegí tus días y tu puesto, y la app los reserva sola todas las semanas. Si un día liberás el puesto, ese día no se vuelve a reservar. Si tu puesto está ocupado, te toca otro de la misma zona.</p></div>
+      <div class="field">Días<div class="dchips" id="recDays" role="group" aria-label="Días de la reserva recurrente"></div></div>
+      <label class="field" for="recDesk">Puesto preferido<select id="recDesk"></select></label>
+      <p class="rec-status" id="recStatus" role="status"></p>
+      <div class="row"><button class="btn primary" id="recSave" type="button"><svg class="ic" aria-hidden="true"><use href="#i-repeat"/></svg><span>Activar reserva recurrente</span></button><button class="btn ghost danger" id="recOff" type="button" hidden>Desactivar</button></div>
+    </div>
     <div class="panel" style="display:grid;gap:10px">
       <h2>Mi equipo</h2>
       <p class="sub">Tu equipo define tus días ancla, los días en que la oficina espera a tu equipo completo.</p>
@@ -399,6 +416,15 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
     <div class="panel" style="display:grid;gap:12px">
       <div class="row"><div><h2>Zonas y puestos</h2><p class="sub">Cada zona genera puestos numerados, por ejemplo N-01, N-02.</p></div><span class="spacer"></span><button class="btn" id="addZone"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Agregar zona</button></div>
       <div class="tablewrap"><table><thead><tr><th>Código</th><th>Nombre</th><th>Puestos</th><th>Puestos fuera de servicio</th><th></th></tr></thead><tbody id="zoneRows"></tbody></table></div>
+    </div>
+    <div class="panel" style="display:grid;gap:12px">
+      <div><h2>Feriados y cierres</h2><p class="sub">Los días marcados no se pueden reservar. Al marcar un día se cancelan las reservas que ya había.</p></div>
+      <form class="row" id="clForm" novalidate>
+        <label class="field" for="clDate" style="flex:0 1 180px">Fecha<input id="clDate" type="date"></label>
+        <label class="field" for="clReason" style="flex:1 1 220px">Motivo<input id="clReason" type="text" placeholder="Ej.: Feriado nacional" maxlength="80"></label>
+        <button class="btn" type="submit" style="align-self:flex-end"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Agregar cierre</button>
+      </form>
+      <div class="list" id="clList"></div>
     </div>
     <div class="row"><span class="spacer"></span><button class="btn primary" id="saveCfg">Guardar cambios</button></div>
     <p class="sub" id="cfgNote"></p>

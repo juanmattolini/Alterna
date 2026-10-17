@@ -9,8 +9,9 @@ Reserva y gestión de puestos de oficina para el esquema híbrido de **3 días p
 - **Reservar:** semana con puestos libres por día y plano por zonas. Un toque reserva o libera. Contador de días presenciales de la semana.
 - **Reservar mis días de equipo:** reserva tus 3 días ancla, con el mismo puesto si es posible.
 - **Equipos:** cada equipo tiene 3 días ancla. El optimizador los reparte para que el día más cargado use la menor cantidad de puestos.
+- **Reserva recurrente:** elegís hasta 3 días fijos y un puesto, y la app los reserva sola cada noche hasta el horizonte. Si liberás un día, no se vuelve a reservar. Si tu puesto está ocupado, te toca otro de la misma zona.
 - **Ocupación:** reservas por día frente a la capacidad.
-- **Oficina** (administradores): zonas, puestos, puestos fuera de servicio, reglas y roles de las personas.
+- **Oficina** (administradores): zonas, puestos, puestos fuera de servicio, reglas, roles de las personas y **feriados y cierres** (al cargar un cierre se cancelan las reservas de ese día y nadie puede reservarlo).
 
 ## Cómo está armada
 
@@ -31,6 +32,8 @@ La clave de `config.js` es la clave **publicable** de Supabase y puede estar en 
 - Solo usuarios con sesión iniciada leen datos.
 - Cada persona reserva solo a su nombre, un puesto por día, de lunes a viernes, dentro del período de reserva.
 - Un puesto no se puede reservar dos veces el mismo día.
+- Los días cerrados no se pueden reservar (lo valida la base, no solo la pantalla).
+- La reserva recurrente corre en la base con `pg_cron` todos los días a las 03:15 UTC (función `materialize_recurring`).
 - La primera persona que se registra queda como administradora. Solo los administradores cambian la oficina, los equipos y los roles, y borran reservas ajenas.
 
 ## Configuración de Supabase (una vez)
