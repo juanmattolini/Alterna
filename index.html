@@ -236,6 +236,19 @@ a:focus-visible,.desk:focus-visible,.day:focus-visible,[role=tab]:focus-visible{
 .seg button{border:0;background:none;color:var(--muted);font:inherit;font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;min-height:32px}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink,#fff)}
 .days.cal{row-gap:8px}
+#myCalWrap[hidden]{display:none!important}
+.day.blank{visibility:hidden}
+.day.later{background:transparent;border-style:dashed}
+.day.later .free{font-size:11px}
+.day.closed.k-feriado,.day.closed.k-no_laborable{background:repeating-linear-gradient(135deg,var(--accent-soft),var(--accent-soft) 6px,var(--surface) 6px,var(--surface) 12px)}
+.day.booked{border-color:var(--tag);box-shadow:inset 0 0 0 1px var(--tag)}
+.day.booked .tag{justify-self:start;background:var(--tag);color:var(--tag-ink);font-family:var(--f-mono);font-size:11px;padding:1px 6px;border-radius:4px}
+.day.open .free{display:flex;align-items:center;gap:4px;color:var(--accent);font-weight:600}
+.day .why .ic.xs{vertical-align:-2px}
+details.hol{margin-top:6px}
+details.hol summary{cursor:pointer;font-weight:600;padding:8px 0;color:var(--ink)}
+details.hol .list{margin-top:6px}
+@media (max-width:480px){.days.cal{gap:5px}.days.cal .day{padding:6px 5px;gap:2px}.days.cal .day .why{display:none}.days.cal .day .free{font-size:10px}.days.cal .day .free .ic{display:none}.day.booked .tag{font-size:9px;padding:1px 3px}.days .dhead{padding:0 4px;font-size:11px}}
 .days .dhead{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;padding:0 8px}
 .days.cal .day .dname{display:none}
 .day .mon{font-size:12px;font-weight:600;color:var(--muted);font-family:var(--f-body,inherit)}
@@ -347,7 +360,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
           <button class="icon-btn" id="nextW" aria-label="Semana siguiente"><svg class="ic" aria-hidden="true"><use href="#i-chevron-right"/></svg></button>
           <span class="label" id="weekLabel"></span>
         </div>
-        <div class="seg" role="group" aria-label="Vista del calendario"><button type="button" data-view="week" aria-pressed="false">Semana</button><button type="button" data-view="cal" aria-pressed="true">Todas las semanas</button></div>
+        <div class="seg" role="group" aria-label="Vista del calendario"><button type="button" data-view="week" aria-pressed="false">Semana</button><button type="button" data-view="cal" aria-pressed="true">Mes</button></div>
         <span class="spacer"></span>
         <button class="btn primary" id="autoBtn"><svg class="ic" aria-hidden="true"><use href="#i-wand-sparkles"/></svg>Reservar mis días de equipo</button>
       </div>
@@ -368,8 +381,20 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
   </section>
 
   <section class="view" role="tabpanel" aria-labelledby="tab-mias" id="v-mias" hidden>
-    <div class="panel"><h2>Mis reservas</h2><p class="sub">Tus próximos días en la oficina. Liberá el puesto si cambiás de plan, así lo puede usar otra persona.</p></div>
-    <div class="list" id="myList"></div>
+    <div class="panel" style="display:grid;gap:14px">
+      <div class="row"><div class="grow"><h2>Mis reservas</h2><p class="sub">Tocá un día reservado para liberarlo, así lo puede usar otra persona.</p></div>
+        <div class="seg" role="group" aria-label="Vista de mis reservas"><button type="button" data-myview="cal" aria-pressed="true">Calendario</button><button type="button" data-myview="list" aria-pressed="false">Lista</button></div></div>
+      <div id="myCalWrap" style="display:grid;gap:12px">
+        <div class="weeknav">
+          <button class="icon-btn" id="myPrev" aria-label="Mes anterior"><svg class="ic" aria-hidden="true"><use href="#i-chevron-left"/></svg></button>
+          <button class="icon-btn" id="myNext" aria-label="Mes siguiente"><svg class="ic" aria-hidden="true"><use href="#i-chevron-right"/></svg></button>
+          <span class="label" id="myLabel"></span>
+        </div>
+        <p class="sub" id="mySum" role="status"></p>
+        <div class="days cal" id="myCal"></div>
+      </div>
+    </div>
+    <div class="list" id="myList" hidden></div>
     <div class="panel" id="recPanel" style="display:grid;gap:12px">
       <div><h2>Reserva recurrente</h2><p class="sub">Elegí tus días y tu puesto, y la app los reserva sola todas las semanas. Si un día liberás el puesto, ese día no se vuelve a reservar. Si tu puesto está ocupado, te toca otro de la misma zona.</p></div>
       <div class="field">Días<div class="dchips" id="recDays" role="group" aria-label="Días de la reserva recurrente"></div></div>
@@ -446,9 +471,9 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
 <div id="sheetHost"></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="vendor/supabase-2.117.2.js"></script>
-<script src="icons.js"></script>
-<script src="config.js"></script>
-<script src="app.js"></script>
+<script src="vendor/supabase-2.117.2.js?v=20261017c"></script>
+<script src="icons.js?v=20261017c"></script>
+<script src="config.js?v=20261017c"></script>
+<script src="app.js?v=20261017c"></script>
 </body>
 </html>
