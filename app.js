@@ -4,7 +4,7 @@ const DAYN=["Lun","Mar","Mié","Jue","Vie"];
 const DAYL=["lunes","martes","miércoles","jueves","viernes"];
 const MON=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 const DEFAULT_CFG={officeDays:3,horizonDays:14,offAnchor:"allow",closures:{},closureKinds:{},
-  zones:[{id:"N",name:"Zona Norte",desks:16,off:""},{id:"S",name:"Zona Sur",desks:16,off:""},{id:"Q",name:"Sala silenciosa",desks:8,off:""}],
+  zones:[{id:"N",name:"306",desks:16,off:""},{id:"S",name:"305",desks:16,off:""},{id:"Q",name:"Sala silenciosa",desks:8,off:""}],
   teams:[]};
 const EXAMPLE_TEAMS=[["Producto",12],["Tecnología",18],["Comercial",14],["Operaciones",10],["Finanzas",6],["Personas",4]];
 
