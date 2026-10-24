@@ -109,7 +109,9 @@ section.view{display:grid;gap:18px}
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;font-weight:700;font-size:14px}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 a.btn{text-decoration:none;color:inherit}
-.credit{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;margin-top:32px;padding-top:16px;border-top:1px solid var(--line)}
+.credit{margin-top:28px;text-align:center;font-size:12px;color:var(--muted)}
+.credit a{color:inherit;font-weight:600;text-decoration:underline;text-decoration-color:var(--edge);text-underline-offset:3px}
+.credit a:hover{color:var(--ink);text-decoration-color:currentColor}
 .btn.ghost{background:transparent}
 .btn.danger{color:var(--danger)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -498,7 +500,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
       <div class="tablewrap"><table style="min-width:420px"><thead><tr><th>Nombre</th><th>Equipo</th><th>Rol</th></tr></thead><tbody id="peopleRows"></tbody></table></div>
     </div>
   </section>
-  <footer class="credit"><span class="sub">YADcras Park, diseñada y desarrollada por Juan Mattolini.</span><a class="btn" href="https://juanmattolini.github.io/portfolio/" target="_blank" rel="noopener">Ver portfolio</a></footer>
+  <footer class="credit">Diseñada y desarrollada por <a href="https://juanmattolini.github.io/portfolio/" target="_blank" rel="noopener">Juan Mattolini</a></footer>
 </main>
 
 <div id="sheetHost"></div>
