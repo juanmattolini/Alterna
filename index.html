@@ -96,6 +96,7 @@ nav.tabs button{display:inline-flex;align-items:center;gap:8px}
   .brand small{display:none}
 }
 main{padding-block:20px 40px}
+@media (max-width:720px){main{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
 section.view{display:grid;gap:18px}
 .banner{background:var(--warn-soft);color:var(--ink);border-radius:var(--r);padding:10px 14px;font-size:13px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
@@ -107,6 +108,8 @@ section.view{display:grid;gap:18px}
 
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;font-weight:700;font-size:14px}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+a.btn{text-decoration:none;color:inherit}
+.credit{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;margin-top:32px;padding-top:16px;border-top:1px solid var(--line)}
 .btn.ghost{background:transparent}
 .btn.danger{color:var(--danger)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -495,6 +498,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
       <div class="tablewrap"><table style="min-width:420px"><thead><tr><th>Nombre</th><th>Equipo</th><th>Rol</th></tr></thead><tbody id="peopleRows"></tbody></table></div>
     </div>
   </section>
+  <footer class="credit"><span class="sub">YADcras Park, diseñada y desarrollada por Juan Mattolini.</span><a class="btn" href="https://juanmattolini.github.io/portfolio/" target="_blank" rel="noopener">Ver portfolio</a></footer>
 </main>
 
 <div id="sheetHost"></div>
