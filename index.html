@@ -302,6 +302,11 @@ nav.tabs button.tab-new[aria-selected="true"]{color:var(--tag-ink);border-bottom
 .new-tag{display:inline-block;background:var(--tag-ink);color:var(--tag);font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:999px;line-height:1.3}
 .proposal{display:flex;align-items:flex-start;gap:10px;background:var(--tag);color:var(--tag-ink);border-radius:var(--r);padding:12px 14px;font-size:14px}
 .proposal .grow{flex:1;min-width:0}
+.poll{display:grid;gap:8px;margin-top:10px}
+.poll .sub{color:inherit;opacity:.85}
+.btn.vote{background:var(--surface);color:var(--ink);border-color:var(--tag-ink);min-height:40px;padding:6px 14px}
+.btn.vote[aria-pressed="true"]{background:var(--tag-ink);color:var(--tag);border-color:var(--tag-ink)}
+.btn.vote .num{font-family:var(--f-mono);opacity:.8}
 .mtotals{display:flex;flex-wrap:wrap;gap:6px}
 .mtotals .badge{background:var(--accent-soft);color:var(--ink);font-weight:600}
 .mtotals .badge b{font-variant-numeric:tabular-nums}
@@ -463,7 +468,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
   </section>
 
   <section class="view" role="tabpanel" aria-labelledby="tab-viandas" id="v-viandas" hidden>
-    <div class="proposal"><span class="new-tag">Nuevo</span><span class="grow"><b>Es una propuesta.</b> Estamos probando pedir las viandas desde la app. Hasta que lo confirmemos entre todos, el pedido sigue por el formulario de siempre.</span></div>
+    <div class="proposal"><span class="new-tag">Nuevo</span><span class="grow"><b>Es una propuesta.</b> Estamos probando pedir las viandas desde la app. Hasta que lo confirmemos entre todos, el pedido sigue por el formulario de siempre.<span class="poll" id="pollBox"></span></span></div>
     <div class="panel" style="display:grid;gap:12px">
       <div><h2>Mi vianda</h2><p class="sub">Elegí el menú de Gastrosud para los días que vas a la oficina.</p></div>
       <div class="mdays" id="mealDays" role="group" aria-label="Día de la vianda"></div>
@@ -560,9 +565,9 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
 <div id="sheetHost"></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="vendor/supabase-2.117.2.js?v=20261025e"></script>
-<script src="icons.js?v=20261025e"></script>
-<script src="config.js?v=20261025e"></script>
-<script src="app.js?v=20261025e"></script>
+<script src="vendor/supabase-2.117.2.js?v=20261025f"></script>
+<script src="icons.js?v=20261025f"></script>
+<script src="config.js?v=20261025f"></script>
+<script src="app.js?v=20261025f"></script>
 </body>
 </html>
