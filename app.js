@@ -328,13 +328,44 @@ function orderData(d){const booked=bookingsOn(d);const orders=[],pending=[];
   const byName=(a,b)=>nameOf(a).localeCompare(nameOf(b));
   orders.sort((a,b)=>byName(a.userId,b.userId));pending.sort(byName);return{orders,pending,booked:booked.length}}
 function tally(list,key){const t={};list.forEach(o=>{const k=key(o);t[k]=(t[k]||0)+1});return Object.entries(t).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"es",{numeric:true}))}
-function orderMail(d){const {orders}=orderData(d);const dt=parse(d);const f=DAYL[(dt.getDay()+6)%7]+" "+dt.getDate()+"/"+(dt.getMonth()+1)+"/"+dt.getFullYear();
-  const code=o=>o.menu==="OTRA"?"Otras ("+o.other+")":o.menu;
-  const lines=orders.map((o,i)=>(i+1)+". "+nameOf(o.userId)+" – "+code(o)+" – "+(o.drink&&o.drink!=="SIN BEBIDA"?o.drink:"sin bebida"));
-  const menus=tally(orders,code).map(([k,n])=>k+" x"+n).join(", ");
-  const drinks=tally(orders.filter(o=>o.drink&&o.drink!=="SIN BEBIDA"),o=>o.drink).map(([k,n])=>k+" x"+n).join(", ");
-  return{subject:"Pedido de viandas – "+f,
-    body:"Hola, les paso el pedido de viandas para el "+f+".\n\n"+lines.join("\n")+"\n\nTotal: "+orders.length+(orders.length===1?" vianda":" viandas")+".\nMenús: "+menus+(drinks?"\nBebidas: "+drinks:"")+"\n\nGracias."}}
+function orderMail(d){const n=orderData(d).orders.length;const dt=parse(d);const f=DAYL[(dt.getDay()+6)%7]+" "+dt.getDate()+"/"+(dt.getMonth()+1)+"/"+dt.getFullYear();
+  return{subject:"Pedido de viandas – "+f,body:"Hola, les paso el pedido de viandas para el "+f+": "+n+(n===1?" vianda":" viandas")+". Va adjunto el Excel con el detalle.\n\nGracias."}}
+/* the provider's sheet: one row per person sorted by menu, and the totals per menu on the right */
+const surname=id=>{const p=String(nameOf(id)).trim().split(/\s+/);return(p[p.length-1]||"").toUpperCase()};
+const menuCode=o=>o.menu==="OTRA"?"OTRA: "+o.other:o.menu;
+const menuRank=o=>o.menu==="OTRA"?999:+o.menu.slice(1)||0;
+function orderGrid(d){const {orders}=orderData(d);
+  const list=orders.slice().sort((a,b)=>menuRank(a)-menuRank(b)||surname(a.userId).localeCompare(surname(b.userId),"es"));
+  const tot=tally(list,menuCode).sort((a,b)=>menuRank({menu:a[0].startsWith("OTRA")?"OTRA":a[0]})-menuRank({menu:b[0].startsWith("OTRA")?"OTRA":b[0]}));
+  const rows=[["ID","Apellido","Menú","Bebida","Cant. Total",list.length]];
+  for(let i=0;i<Math.max(list.length,tot.length);i++){const o=list[i];const t=tot[i];
+    rows.push([o?i+1:"",o?surname(o.userId):"",o?menuCode(o):"",o&&o.drink!=="SIN BEBIDA"?o.drink:"",t?t[0]:"",t?t[1]:""])}
+  return rows}
+function gridHtml(rows){return '<table border="1" cellpadding="4" style="border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:11pt">'+rows.map((r,i)=>'<tr>'+r.map(c=>i?'<td>'+esc(c)+'</td>':'<th style="background:#d9e7e8">'+esc(c)+'</th>').join("")+'</tr>').join("")+'</table>'}
+const gridTsv=rows=>rows.map(r=>r.join("\t")).join("\n");
+/* minimal .xlsx: an uncompressed zip with one sheet of inline strings */
+function xlsxBlob(rows,sheet){const enc=new TextEncoder();const x=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const col=i=>String.fromCharCode(65+i);
+  const cells=rows.map((r,ri)=>'<row r="'+(ri+1)+'">'+r.map((v,ci)=>v===""?"":typeof v==="number"?'<c r="'+col(ci)+(ri+1)+'"'+(ri?"":' s="1"')+'><v>'+v+'</v></c>':'<c r="'+col(ci)+(ri+1)+'" t="inlineStr"'+(ri?"":' s="1"')+'><is><t>'+x(v)+'</t></is></c>').join("")+'</row>').join("");
+  const files={"[Content_Types].xml":'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+    "_rels/.rels":'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+    "xl/workbook.xml":'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="'+x(sheet)+'" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    "xl/_rels/workbook.xml.rels":'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+    "xl/styles.xml":'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>',
+    "xl/worksheets/sheet1.xml":'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" width="6" customWidth="1"/><col min="2" max="2" width="18" customWidth="1"/><col min="3" max="3" width="14" customWidth="1"/><col min="4" max="4" width="18" customWidth="1"/><col min="5" max="6" width="12" customWidth="1"/></cols><sheetData>'+cells+'</sheetData></worksheet>'};
+  const crcT=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;crcT[n]=c>>>0}
+  const crc=b=>{let c=0xFFFFFFFF;for(const v of b)c=crcT[(c^v)&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+  const parts=[],central=[];let off=0;
+  const le=(n,len)=>{const a=new Uint8Array(len);for(let i=0;i<len;i++)a[i]=(n>>>(8*i))&255;return a};
+  for(const [name,txt] of Object.entries(files)){const nb=enc.encode(name),db=enc.encode(txt),c=crc(db);
+    const head=[le(0x04034b50,4),le(20,2),le(0x0800,2),le(0,2),le(0,2),le(0x21,2),le(c,4),le(db.length,4),le(db.length,4),le(nb.length,2),le(0,2),nb];
+    central.push([le(0x02014b50,4),le(20,2),le(20,2),le(0x0800,2),le(0,2),le(0,2),le(0x21,2),le(c,4),le(db.length,4),le(db.length,4),le(nb.length,2),le(0,2),le(0,2),le(0,2),le(0,2),le(0,4),le(off,4),nb]);
+    parts.push(...head,db);off+=head.reduce((s,a)=>s+a.length,0)+db.length}
+  const cen=central.flat();const cl=cen.reduce((s,a)=>s+a.length,0);
+  parts.push(...cen,le(0x06054b50,4),le(0,2),le(0,2),le(central.length,2),le(central.length,2),le(cl,4),le(off,4),le(0,2));
+  return new Blob(parts,{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})}
+function downloadOrder(d){const a=document.createElement("a");a.href=URL.createObjectURL(xlsxBlob(orderGrid(d),"Pedido "+d));a.download="Pedido viandas "+d+".xlsx";
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}
 const mealTo=()=>String(S.cfg.mealEmails||"").split(/[;,\s]+/).filter(Boolean);
 
 function renderMealForm(){const days=mealDays();const box=$("#mealForm");
@@ -369,7 +400,7 @@ function renderOrder(){const n=arNow();const sel=$("#orderDay");
   const days=rangeDays().filter(d=>d>=n.date&&!closedOn(d)&&(d===n.date||bookingsOn(d).length)).slice(0,10);
   if(!S.orderDay||!days.includes(S.orderDay))S.orderDay=days[0]||null;
   sel.innerHTML=days.map(d=>'<option value="'+d+'"'+(d===S.orderDay?" selected":"")+'>'+esc((d===n.date?"Hoy, ":"")+fmtDay(d))+'</option>').join("")||'<option>Sin días con reservas</option>';sel.disabled=!days.length;
-  const d=S.orderDay;const acts=["#orderMail","#orderGmail","#orderCopy"];
+  const d=S.orderDay;const acts=["#orderMail","#orderGmail","#orderXlsx","#orderCopy"];
   if(!d){$("#orderStatus").innerHTML='<p class="sub">No hay días próximos con reservas.</p>';$("#orderTotals").innerHTML=$("#orderRows").innerHTML=$("#orderPending").innerHTML="";acts.forEach(s=>$(s).disabled=true);return}
   const {orders,pending,booked}=orderData(d);const sent=S.sends[d];
   acts.forEach(s=>$(s).disabled=!orders.length);
@@ -500,12 +531,15 @@ $("#myName").addEventListener("change",async e=>{const n=e.target.value.trim();i
 $("#recDesk").addEventListener("change",e=>{recDraft.deskId=e.target.value;renderRecurring()});
 $("#recSave").addEventListener("click",saveRecurring);
 $("#orderDay").addEventListener("change",e=>{S.orderDay=e.target.value;renderOrder()});
-$("#orderMail").addEventListener("click",()=>{const d=S.orderDay;const m=orderMail(d);
+$("#orderMail").addEventListener("click",()=>{const d=S.orderDay;const m=orderMail(d);downloadOrder(d);toast("Se descargó el Excel. Adjuntalo al mail antes de enviarlo.");
   location.href="mailto:"+mealTo().join(",")+"?subject="+encodeURIComponent(m.subject)+"&body="+encodeURIComponent(m.body);setTimeout(()=>askSent(d),800)});
-$("#orderGmail").addEventListener("click",()=>{const d=S.orderDay;const m=orderMail(d);
+$("#orderGmail").addEventListener("click",()=>{const d=S.orderDay;const m=orderMail(d);downloadOrder(d);toast("Se descargó el Excel. Adjuntalo al mail antes de enviarlo.");
   window.open("https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(mealTo().join(","))+"&su="+encodeURIComponent(m.subject)+"&body="+encodeURIComponent(m.body),"_blank","noopener");setTimeout(()=>askSent(d),800)});
-$("#orderCopy").addEventListener("click",async()=>{const d=S.orderDay;const m=orderMail(d);const txt="Para: "+mealTo().join("; ")+"\nAsunto: "+m.subject+"\n\n"+m.body;
-  try{await navigator.clipboard.writeText(txt);toast("Copiamos el pedido. Pegalo en un mail a Gastrosud.");askSent(d)}catch(e){sheet('<h3>Pedido de viandas</h3><textarea readonly style="width:100%;min-height:220px">'+esc(txt)+'</textarea><div class="row"><span class="spacer"></span><button class="btn primary" data-close>Listo</button></div>')}});
+$("#orderXlsx").addEventListener("click",()=>{downloadOrder(S.orderDay);toast("Se descargó el Excel del pedido.")});
+$("#orderCopy").addEventListener("click",async()=>{const rows=orderGrid(S.orderDay);const tsv=gridTsv(rows);
+  try{if(window.ClipboardItem&&navigator.clipboard.write)await navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([gridHtml(rows)],{type:"text/html"}),"text/plain":new Blob([tsv],{type:"text/plain"})})]);else await navigator.clipboard.writeText(tsv);
+    toast("Copiamos la tabla. Pegala en el mail o en Excel.")}
+  catch(e){sheet('<h3>Tabla del pedido</h3><textarea readonly style="width:100%;min-height:220px">'+esc(tsv)+'</textarea><div class="row"><span class="spacer"></span><button class="btn primary" data-close>Listo</button></div>')}});
 $("#compWeek").addEventListener("change",e=>{compWeek=+e.target.value;renderCompliance()});
 $("#compTeam").addEventListener("change",e=>{compTeam=e.target.value;renderCompliance()});
 $("#compCopy").addEventListener("click",async()=>{const rows=compRows().filter(r=>r.n<r.goal);const d=weekDays(compWeek);
