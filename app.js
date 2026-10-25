@@ -309,7 +309,7 @@ const MENUS=[["M1",""],["M2",""],["M3",""],["M4",""],["M5",""],["M6",""],["M7","
   ["M17","Hamburguesas de pollo caseras con guarnición liviana o ensalada"],["M18","Alitas de pollo picantes (suave) con ensalada"],["M19","Pebete de salame y queso 18 cm"],
   ["M20","Opción pasta del día con salsa rosa"]];
 /* drink codes go to the provider as in their form; labels are for the screen */
-const DRINKS=[["COCA COMUN","Coca común"],["COCA ZERO","Coca Zero"],["SPRITE","Sprite"],["SPRITE ZERO","Sprite Zero"],["AGUA","Agua"],["SODA","Soda"],["POMELO","Pomelo"],
+const DRINKS=[["COCA","Coca"],["COCA ZERO","Coca Zero"],["SPRITE","Sprite"],["SPRITE ZERO","Sprite Zero"],["AGUA","Agua"],["AGUA C/GAS","Agua con gas"],["POMELO","Pomelo"],
   ["POMELO ZERO","Pomelo Zero"],["POWERADE","Powerade"],["AGUA SABORIZADA","Agua saborizada"],["FANTA","Fanta"],["SIN BEBIDA","Sin bebida"]];
 const menuText=m=>m.menu==="OTRA"?"Otras: "+m.other:[m.menu,(MENUS.find(x=>x[0]===m.menu)||[])[1]].filter(Boolean).join(" · ");
 const drinkText=m=>(DRINKS.find(x=>x[0]===m.drink)||[m.drink,m.drink||"Sin bebida"])[1];
