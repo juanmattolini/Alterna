@@ -91,6 +91,7 @@ nav.tabs button{display:inline-flex;align-items:center;gap:8px}
   nav.tabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;font-size:11px;border-bottom:0;border-top:3px solid transparent}
   nav.tabs button[aria-selected="true"]{border-top-color:var(--accent)}
   .tabicon{display:block;width:22px;height:22px}
+  nav.tabs button{white-space:nowrap;font-size:10.5px;letter-spacing:-.01em;min-width:0}
   nav.tabs button{gap:2px}
   main{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
   .brand small{display:none}
@@ -284,6 +285,20 @@ details.hol .list{margin-top:6px}
 .day .why{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ic.big{width:40px;height:40px;color:var(--accent)}
 .ic.xs{width:13px;height:13px;vertical-align:-2px}
+.mdays{display:flex;flex-wrap:wrap;gap:8px}
+.mday{border:1px solid var(--edge);background:var(--surface);border-radius:10px;padding:6px 12px;min-height:44px;display:grid;justify-items:start;font-size:13px;line-height:1.25;text-align:left}
+.mday b{font-size:14px}
+.mday small{color:var(--muted)}
+.mday[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.mday[aria-pressed="true"] small{color:inherit}
+.mday .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--tag);margin-right:5px}
+.field textarea{padding:8px 10px;border:1px solid var(--edge);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;resize:vertical}
+#v-viandas .field select{width:100%;min-width:0;text-overflow:ellipsis}
+.mtotals{display:flex;flex-wrap:wrap;gap:6px}
+.mtotals .badge{background:var(--accent-soft);color:var(--ink);font-weight:600}
+.mtotals .badge b{font-variant-numeric:tabular-nums}
+.pend{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.pend .person{font-size:13px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:2px 10px 2px 2px;gap:6px}
 .rec-status{display:flex;align-items:flex-start;gap:8px;margin:0;font-size:14px}
 .rec-status .ic{color:var(--accent);margin-top:2px}
 .item>.ic{color:var(--muted)}
@@ -367,6 +382,7 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
     <nav class="tabs" role="tablist" id="tabs" aria-label="Secciones">
       <button role="tab" id="tab-reservar" aria-controls="v-reservar" data-tab="reservar" aria-selected="true"><svg class="ic tabicon" aria-hidden="true"><use href="#i-armchair"/></svg>Reservar</button>
       <button role="tab" id="tab-mias" aria-controls="v-mias" data-tab="mias" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-calendar-check"/></svg>Mis reservas</button>
+      <button role="tab" id="tab-viandas" aria-controls="v-viandas" data-tab="viandas" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-utensils"/></svg>Viandas</button>
       <button role="tab" id="tab-ocupacion" aria-controls="v-ocupacion" data-tab="ocupacion" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-chart-column"/></svg>Ocupación</button>
       <button role="tab" id="tab-plan" aria-controls="v-plan" data-tab="plan" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-users"/></svg>Equipos</button>
       <button role="tab" id="tab-config" aria-controls="v-config" data-tab="config" aria-selected="false"><svg class="ic tabicon" aria-hidden="true"><use href="#i-building-2"/></svg>Oficina</button>
@@ -438,6 +454,27 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
     </div>
   </section>
 
+  <section class="view" role="tabpanel" aria-labelledby="tab-viandas" id="v-viandas" hidden>
+    <div class="panel" style="display:grid;gap:12px">
+      <div><h2>Mi vianda</h2><p class="sub">Elegí el menú de Gastrosud para los días que vas a la oficina.</p></div>
+      <div class="mdays" id="mealDays" role="group" aria-label="Día de la vianda"></div>
+      <div id="mealForm" style="display:grid;gap:12px"></div>
+    </div>
+    <div class="panel" style="display:grid;gap:12px">
+      <div class="row"><div class="grow"><h2>Pedido del día</h2><p class="sub">Cualquiera puede enviarlo. Tiene que llegarle a Gastrosud antes de las 9.</p></div>
+        <label class="field" for="orderDay" style="flex:0 1 220px">Día<select id="orderDay"></select></label></div>
+      <div id="orderStatus"></div>
+      <div class="row" id="orderActions">
+        <button class="btn primary" id="orderMail" type="button"><svg class="ic" aria-hidden="true"><use href="#i-send"/></svg>Enviar a Gastrosud</button>
+        <button class="btn" id="orderGmail" type="button"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg>Abrir en Gmail</button>
+        <button class="btn ghost" id="orderCopy" type="button"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>Copiar listado</button>
+      </div>
+      <div class="mtotals" id="orderTotals"></div>
+      <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Persona</th><th>Menú</th><th>Bebida</th></tr></thead><tbody id="orderRows"></tbody></table></div>
+      <div id="orderPending"></div>
+    </div>
+  </section>
+
   <section class="view" role="tabpanel" aria-labelledby="tab-ocupacion" id="v-ocupacion" hidden>
     <div class="tiles" id="occTiles"></div>
     <div class="panel" style="display:grid;gap:12px">
@@ -493,6 +530,13 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
       </form>
       <div class="list" id="clList"></div>
     </div>
+    <div class="panel" style="display:grid;gap:12px">
+      <div><h2>Viandas</h2><p class="sub">Hasta qué hora se puede elegir la vianda de cada día y a quién se le manda el pedido.</p></div>
+      <div class="grid2">
+        <label class="field" for="cfgMealCutoff">Se puede elegir hasta las<input id="cfgMealCutoff" type="time"></label>
+        <label class="field" for="cfgMealEmails">Correos del proveedor<input id="cfgMealEmails" type="text" placeholder="pedidos@proveedor.com; otro@proveedor.com"></label>
+      </div>
+    </div>
     <div class="row"><span class="spacer"></span><button class="btn primary" id="saveCfg">Guardar cambios</button></div>
     <p class="sub" id="cfgNote"></p>
     <div class="panel" id="peoplePanel" style="display:grid;gap:12px" hidden>
@@ -506,9 +550,9 @@ td select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;backgro
 <div id="sheetHost"></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="vendor/supabase-2.117.2.js?v=20261017h"></script>
-<script src="icons.js?v=20261017h"></script>
-<script src="config.js?v=20261017h"></script>
-<script src="app.js?v=20261017h"></script>
+<script src="vendor/supabase-2.117.2.js?v=20261025a"></script>
+<script src="icons.js?v=20261025a"></script>
+<script src="config.js?v=20261025a"></script>
+<script src="app.js?v=20261025a"></script>
 </body>
 </html>
