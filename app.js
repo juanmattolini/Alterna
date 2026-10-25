@@ -3,7 +3,7 @@
 const DAYN=["Lun","Mar","Mié","Jue","Vie"];
 const DAYL=["lunes","martes","miércoles","jueves","viernes"];
 const MON=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
-const DEFAULT_CFG={officeDays:3,horizonDays:14,offAnchor:"allow",closures:{},closureKinds:{},
+const DEFAULT_CFG={officeDays:3,horizonDays:14,offAnchor:"allow",closures:{},closureKinds:{},mealCutoff:"08:30",mealEmails:"pedidos@gastrosud.com.ar; administracion@gastrosud.com.ar",
   zones:[{id:"N",name:"Zona Norte",desks:16,off:""},{id:"S",name:"Zona Sur",desks:16,off:""},{id:"Q",name:"Sala silenciosa",desks:8,off:""}],
   teams:[]};
 const EXAMPLE_TEAMS=[["Producto",12],["Tecnología",18],["Comercial",14],["Operaciones",10],["Finanzas",6],["Personas",4]];
@@ -21,7 +21,8 @@ const clone=o=>JSON.parse(JSON.stringify(o));
 const uidGen=()=>(window.crypto&&crypto.randomUUID)?crypto.randomUUID():"10000000-1000-4000-8000-100000000000".replace(/[018]/g,c=>(c^Math.random()*16>>c/4).toString(16));
 
 const S={cfg:clone(DEFAULT_CFG),bookings:new Map(),me:{id:null,name:"Tú",color:"#0f6b5c"},canEdit:true,canWrite:true,
-  profile:{teamId:""},names:{},people:[],week:0,cal:(()=>{try{return localStorage.getItem("alterna:cal")!=="week"}catch(e){return true}})(),selDay:null,month:todayStr.slice(0,7),myMonth:todayStr.slice(0,7),myView:(()=>{try{return localStorage.getItem("alterna:myview")||"cal"}catch(e){return "cal"}})(),tab:"reservar",draft:null,busy:false};
+  profile:{teamId:""},names:{},people:[],week:0,cal:(()=>{try{return localStorage.getItem("alterna:cal")!=="week"}catch(e){return true}})(),selDay:null,month:todayStr.slice(0,7),myMonth:todayStr.slice(0,7),myView:(()=>{try{return localStorage.getItem("alterna:myview")||"cal"}catch(e){return "cal"}})(),tab:"reservar",draft:null,busy:false,
+  meals:new Map(),sends:{},mealDay:null,mealDraft:null,orderDay:null};
 
 /* ---------- desks ---------- */
 /* table capacities of a zone, e.g. "8,2,2" -> [8,2,2]; empty means a plain grid */
@@ -33,37 +34,48 @@ const capacity=()=>activeDesks().length;
 
 /* ---------- backend (Supabase) ---------- */
 function sbStore(sb,uid){
-  let ccb=null,bcb=null,range=null,cfgCache=null;
+  let ccb=null,bcb=null,mcb=null,range=null,cfgCache=null;
   const mapB=r=>({id:r.id,date:r.date,deskId:r.desk_id,userId:r.user_id});
   const fail=r=>{if(r.error)throw r.error;return r};
   async function loadCfg(){
     const [c,z,t,cl]=await Promise.all([sb.from("office_config").select("*").eq("id",1).maybeSingle(),sb.from("zones").select("*").order("sort"),sb.from("teams").select("*").order("created_at"),sb.from("closures").select("date,reason,kind").order("date")]);
     [c,z,t,cl].forEach(fail);
-    const cfg={officeDays:c.data?c.data.office_days:3,horizonDays:c.data?(c.data.horizon_days||c.data.horizon_weeks*7):14,offAnchor:c.data?c.data.off_anchor:"allow",
+    const cfg={mealCutoff:String(c.data&&c.data.meal_cutoff||"08:30").slice(0,5),mealEmails:c.data&&c.data.meal_emails!=null?c.data.meal_emails:DEFAULT_CFG.mealEmails,
+      officeDays:c.data?c.data.office_days:3,horizonDays:c.data?(c.data.horizon_days||c.data.horizon_weeks*7):14,offAnchor:c.data?c.data.off_anchor:"allow",
       zones:z.data.map(r=>({id:r.id,name:r.name,desks:r.desks,off:(r.off_desks||[]).join(", "),layout:r.layout||""})),
       teams:t.data.map(r=>({id:r.id,name:r.name,people:r.people,days:(r.days||[]).slice().sort()})),
       closures:Object.fromEntries(cl.data.map(r=>[r.date,r.reason])),closureKinds:Object.fromEntries(cl.data.map(r=>[r.date,r.kind||"cierre"]))};
     cfgCache=cfg;ccb&&ccb(clone(cfg));}
   async function loadB(){if(!range)return;const r=await sb.from("bookings").select("id,date,desk_id,user_id").gte("date",range[0]).lte("date",range[1]);
     if(r.error){toast("No pudimos cargar las reservas. Recargá la página.");return}bcb&&bcb(r.data.map(mapB))}
+  const mapM=r=>({date:r.date,userId:r.user_id,menu:r.menu,other:r.menu_other||"",drink:r.drink||""});
+  async function loadM(){if(!range)return;const [m,s]=await Promise.all([sb.from("meal_orders").select("date,user_id,menu,menu_other,drink").gte("date",range[0]).lte("date",range[1]),sb.from("meal_sends").select("date,sent_by,sent_at,orders").gte("date",range[0]).lte("date",range[1])]);
+    if(m.error||s.error)return;mcb&&mcb(m.data.map(mapM),s.data.map(r=>({date:r.date,sentBy:r.sent_by,sentAt:r.sent_at,orders:r.orders})))}
   const deb=(f,ms)=>{let t;return()=>{clearTimeout(t);t=setTimeout(f,ms||250)}};
-  const rb=deb(loadB),rc=deb(()=>loadCfg().catch(()=>{}));
+  const rb=deb(loadB),rc=deb(()=>loadCfg().catch(()=>{})),rm=deb(loadM);
   sb.channel("alterna-live")
     .on("postgres_changes",{event:"*",schema:"public",table:"bookings"},rb)
     .on("postgres_changes",{event:"*",schema:"public",table:"zones"},rc)
     .on("postgres_changes",{event:"*",schema:"public",table:"teams"},rc)
     .on("postgres_changes",{event:"*",schema:"public",table:"office_config"},rc)
     .on("postgres_changes",{event:"*",schema:"public",table:"closures"},()=>{rc();rb()})
+    .on("postgres_changes",{event:"*",schema:"public",table:"meal_orders"},rm)
+    .on("postgres_changes",{event:"*",schema:"public",table:"meal_sends"},rm)
     .subscribe();
-  document.addEventListener("visibilitychange",()=>{if(!document.hidden){rb();rc()}});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden){rb();rc();rm()}});
   return{
-    watchBookings(from,to,cb){bcb=cb;range=[from,to];loadB();return()=>{}},
+    watchBookings(from,to,cb){bcb=cb;range=[from,to];loadB();loadM();return()=>{}},
+    watchMeals(cb){mcb=cb;loadM()},
+    async saveMeal(m){fail(await sb.from("meal_orders").upsert({date:m.date,user_id:uid,menu:m.menu,menu_other:m.menu==="OTRA"?m.other:"",drink:m.drink}));rm()},
+    async deleteMeal(date){fail(await sb.from("meal_orders").delete().eq("date",date).eq("user_id",uid));rm()},
+    async markSent(date,n){fail(await sb.from("meal_sends").insert({date,orders:n}));rm()},
+    async undoSent(date){fail(await sb.from("meal_sends").delete().eq("date",date));rm()},
     watchConfig(cb){ccb=cb;loadCfg().catch(()=>toast("No pudimos cargar la oficina. Recargá la página."))},
     async claim(date,deskId){const r=await sb.from("bookings").insert({date,desk_id:deskId});
       if(r.error){if(r.error.code==="23505"){rb();return false}throw r.error}rb();return true},
     async cancel(id){fail(await sb.from("bookings").delete().eq("id",id));rb()},
     async saveConfig(c){const prev=cfgCache||{zones:[],teams:[]};
-      fail(await sb.from("office_config").update({office_days:c.officeDays,horizon_days:c.horizonDays,off_anchor:c.offAnchor,updated_at:new Date().toISOString()}).eq("id",1));
+      fail(await sb.from("office_config").update({meal_cutoff:c.mealCutoff,meal_emails:c.mealEmails,office_days:c.officeDays,horizon_days:c.horizonDays,off_anchor:c.offAnchor,updated_at:new Date().toISOString()}).eq("id",1));
       const zrows=c.zones.map((z,i)=>({id:z.id,name:z.name,desks:tablesOf(z).length?tablesOf(z).reduce((a,b)=>a+b,0):z.desks,layout:tablesOf(z).join(","),off_desks:String(z.off||"").split(/[ ,;]+/).filter(Boolean).map(Number).filter(n=>n>0),sort:i}));
       if(zrows.length)fail(await sb.from("zones").upsert(zrows));
       const zdel=prev.zones.map(z=>z.id).filter(id=>!c.zones.some(z=>z.id===id));if(zdel.length)fail(await sb.from("zones").delete().in("id",zdel));
@@ -289,6 +301,98 @@ function renderMias(){const list=myBookings().filter(b=>b.date>=todayStr);
   renderRecurring();
   if(document.activeElement!==$("#myName"))$("#myName").value=S.me.name||"";}
 
+/* ---------- render: viandas ---------- */
+const MENUS=[["M1",""],["M2",""],["M3",""],["M4",""],["M5",""],["M6",""],["M7","Yogures, ensaladas y 2 frutas"],["M8","Ensaladas, 1 yogurt y 2 sándwich triple"],
+  ["M10","Tartitas de jamón y queso (3 unidades)"],["M11","Milanesas de ternera con guarnición del día"],["M12","Suprema de pollo con guarnición del día"],
+  ["M13","Sándwich de miga triple de jamón y queso (6 unidades)"],["M14","Sándwich de hamburguesa con jamón, queso, tomate y lechuga"],
+  ["M15","Pechuga grillada al horno con limón, guarnición liviana y ensalada"],["M16","Milanesas de soja napolitana con guarnición del día (menú vegetariano alternativo)"],
+  ["M17","Hamburguesas de pollo caseras con guarnición liviana o ensalada"],["M18","Alitas de pollo picantes (suave) con ensalada"],["M19","Pebete de salame y queso 18 cm"],
+  ["M20","Opción pasta del día con salsa rosa"]];
+/* drink codes go to the provider as in their form; labels are for the screen */
+const DRINKS=[["COCA COMUN","Coca común"],["COCA ZERO","Coca Zero"],["SPRITE","Sprite"],["SPRITE ZERO","Sprite Zero"],["AGUA","Agua"],["SODA","Soda"],["POMELO","Pomelo"],
+  ["POMELO ZERO","Pomelo Zero"],["POWERADE","Powerade"],["AGUA SABORIZADA","Agua saborizada"],["FANTA","Fanta"],["SIN BEBIDA","Sin bebida"]];
+const menuText=m=>m.menu==="OTRA"?"Otras: "+m.other:[m.menu,(MENUS.find(x=>x[0]===m.menu)||[])[1]].filter(Boolean).join(" · ");
+const drinkText=m=>(DRINKS.find(x=>x[0]===m.drink)||[m.drink,m.drink||"Sin bebida"])[1];
+const AR_TZ="America/Argentina/Buenos_Aires";
+function arNow(){try{const p={};new Intl.DateTimeFormat("en-CA",{timeZone:AR_TZ,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date()).forEach(x=>p[x.type]=x.value);
+  return{date:p.year+"-"+p.month+"-"+p.day,time:p.hour+":"+p.minute}}catch(e){const d=new Date();return{date:ymd(d),time:pad(d.getHours())+":"+pad(d.getMinutes())}}}
+const mealCut=()=>S.cfg.mealCutoff||"08:30";
+const cutTxt=()=>mealCut().replace(/^0/,"");
+const mealPast=d=>{const n=arNow();return n.date>d||(n.date===d&&n.time>=mealCut())};
+const mealLocked=d=>mealPast(d)||!!S.sends[d];
+const myMeal=d=>S.meals.get(d+"|"+S.me.id);
+const hhmm=iso=>{const d=new Date(iso);return pad(d.getHours())+":"+pad(d.getMinutes())};
+function mealDays(){const today=arNow().date;return myBookings().filter(b=>b.date>=today).slice(0,6).map(b=>b.date)}
+function orderData(d){const booked=bookingsOn(d);const orders=[],pending=[];
+  booked.forEach(b=>{const m=S.meals.get(d+"|"+b.userId);m?orders.push(m):pending.push(b.userId)});
+  const byName=(a,b)=>nameOf(a).localeCompare(nameOf(b));
+  orders.sort((a,b)=>byName(a.userId,b.userId));pending.sort(byName);return{orders,pending,booked:booked.length}}
+function tally(list,key){const t={};list.forEach(o=>{const k=key(o);t[k]=(t[k]||0)+1});return Object.entries(t).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"es",{numeric:true}))}
+function orderMail(d){const {orders}=orderData(d);const dt=parse(d);const f=DAYL[(dt.getDay()+6)%7]+" "+dt.getDate()+"/"+(dt.getMonth()+1)+"/"+dt.getFullYear();
+  const code=o=>o.menu==="OTRA"?"Otras ("+o.other+")":o.menu;
+  const lines=orders.map((o,i)=>(i+1)+". "+nameOf(o.userId)+" – "+code(o)+" – "+(o.drink&&o.drink!=="SIN BEBIDA"?o.drink:"sin bebida"));
+  const menus=tally(orders,code).map(([k,n])=>k+" x"+n).join(", ");
+  const drinks=tally(orders.filter(o=>o.drink&&o.drink!=="SIN BEBIDA"),o=>o.drink).map(([k,n])=>k+" x"+n).join(", ");
+  return{subject:"Pedido de viandas – "+f,
+    body:"Hola, les paso el pedido de viandas para el "+f+".\n\n"+lines.join("\n")+"\n\nTotal: "+orders.length+(orders.length===1?" vianda":" viandas")+".\nMenús: "+menus+(drinks?"\nBebidas: "+drinks:"")+"\n\nGracias."}}
+const mealTo=()=>String(S.cfg.mealEmails||"").split(/[;,\s]+/).filter(Boolean);
+
+function renderMealForm(){const days=mealDays();const box=$("#mealForm");
+  if(!S.mealDay||!days.includes(S.mealDay))S.mealDay=days.find(d=>!mealLocked(d))||days[0]||null;
+  $("#mealDays").innerHTML=days.map(d=>{const m=myMeal(d);const dt=parse(d);
+    return '<button type="button" class="mday" data-md="'+d+'" aria-pressed="'+(d===S.mealDay)+'"><b>'+DAYN[(dt.getDay()+6)%7]+' '+dt.getDate()+' '+MON[dt.getMonth()]+'</b><small>'+(m?'<span class="dot" aria-hidden="true"></span>'+esc(m.menu==="OTRA"?"Otras":m.menu):mealLocked(d)?"Sin vianda":"Sin elegir")+'</small></button>'}).join("");
+  $("#mealDays").querySelectorAll("[data-md]").forEach(b=>b.addEventListener("click",()=>{S.mealDay=b.dataset.md;S.mealDraft=null;renderViandas()}));
+  const d=S.mealDay;
+  if(!d){box.innerHTML='<div class="empty">'+ic("utensils","big")+'<b>No tenés reservas próximas</b><span>La vianda se pide para los días que vas a la oficina.</span><button class="btn primary" id="goBook">Reservar un puesto</button></div>';
+    $("#goBook").addEventListener("click",()=>setTab("reservar"));return}
+  const m=myMeal(d);const sent=S.sends[d];
+  if(mealLocked(d)){box.innerHTML='<p class="rec-status">'+ic(m?"check":"clock")+'<span>'+(m?'Tu vianda del '+esc(fmtDay(d))+': <b>'+esc(menuText(m))+'</b> con <b>'+esc(drinkText(m))+'</b>.':'No pediste vianda para el '+esc(fmtDay(d))+'.')+' '+(sent?'El pedido ya se envió a Gastrosud.':'La elección cerró a las '+cutTxt()+'.')+'</span></p>';return}
+  const dr=S.mealDraft&&S.mealDraft.date===d?S.mealDraft:(S.mealDraft={date:d,menu:m?m.menu:"",other:m?m.other:"",drink:m?m.drink:""});
+  box.innerHTML='<label class="field" for="mealMenu">Menú<select id="mealMenu"><option value="">Elegí un menú</option>'+MENUS.map(([c,t])=>'<option value="'+c+'"'+(dr.menu===c?" selected":"")+'>'+esc(c+(t?" · "+t:""))+'</option>').join("")+'<option value="OTRA"'+(dr.menu==="OTRA"?" selected":"")+'>Otras (escribí qué querés)</option></select></label>'+
+    '<label class="field" for="mealOther"'+(dr.menu==="OTRA"?"":" hidden")+'>¿Qué querés pedir?<textarea id="mealOther" rows="2" maxlength="120">'+esc(dr.other)+'</textarea></label>'+
+    '<label class="field" for="mealDrink">Bebida<select id="mealDrink"><option value="">Elegí una bebida</option>'+DRINKS.map(([c,t])=>'<option value="'+c+'"'+(dr.drink===c?" selected":"")+'>'+esc(t)+'</option>').join("")+'</select></label>'+
+    '<p class="rec-status" role="status">'+ic(m?"check":"clock")+'<span>'+(m?'Pediste <b>'+esc(menuText(m))+'</b> con <b>'+esc(drinkText(m))+'</b>. ':'Todavía no elegiste. ')+'Podés '+(m?"cambiarla":"elegir")+' hasta las '+cutTxt()+' del '+esc(fmtDay(d))+'.</span></p>'+
+    '<div class="row"><button class="btn primary" id="mealSave" type="button">'+ic("check")+(m?"Guardar cambios":"Pedir esta vianda")+'</button>'+(m?'<button class="btn ghost danger" id="mealDel" type="button">No quiero vianda</button>':"")+'</div>';
+  const sync=()=>{dr.menu=$("#mealMenu").value;dr.other=$("#mealOther").value;dr.drink=$("#mealDrink").value;$("#mealOther").closest("label").hidden=dr.menu!=="OTRA"};
+  ["#mealMenu","#mealDrink"].forEach(s=>$(s).addEventListener("change",sync));$("#mealOther").addEventListener("input",sync);
+  $("#mealSave").addEventListener("click",async()=>{sync();
+    if(!dr.menu){toast("Elegí un menú.");$("#mealMenu").focus();return}
+    if(dr.menu==="OTRA"&&!dr.other.trim()){toast("Contanos qué querés en Otras.");$("#mealOther").focus();return}
+    if(!dr.drink){toast("Elegí una bebida, o Sin bebida.");$("#mealDrink").focus();return}
+    try{await store.saveMeal({...dr,other:dr.other.trim()});S.meals.set(d+"|"+S.me.id,{date:d,userId:S.me.id,menu:dr.menu,other:dr.menu==="OTRA"?dr.other.trim():"",drink:dr.drink});S.mealDraft=null;
+      toast("Listo, pediste "+(dr.menu==="OTRA"?"Otras":dr.menu)+" para el "+fmtDay(d)+".");renderViandas()}
+    catch(e){toast(e&&e.message&&/cerró|envió|reserva/.test(e.message)?e.message+".":"No pudimos guardar tu vianda. Revisá tu conexión y probá de nuevo.")}});
+  const del=$("#mealDel");del&&del.addEventListener("click",async()=>{try{await store.deleteMeal(d);S.meals.delete(d+"|"+S.me.id);S.mealDraft=null;toast("Quitaste tu vianda del "+fmtDay(d)+".");renderViandas()}
+    catch(e){toast(e&&e.message&&/cerró|envió/.test(e.message)?e.message+".":"No pudimos quitar tu vianda. Probá de nuevo.")}});}
+
+function renderOrder(){const n=arNow();const sel=$("#orderDay");
+  const days=rangeDays().filter(d=>d>=n.date&&!closedOn(d)&&(d===n.date||bookingsOn(d).length)).slice(0,10);
+  if(!S.orderDay||!days.includes(S.orderDay))S.orderDay=days[0]||null;
+  sel.innerHTML=days.map(d=>'<option value="'+d+'"'+(d===S.orderDay?" selected":"")+'>'+esc((d===n.date?"Hoy, ":"")+fmtDay(d))+'</option>').join("")||'<option>Sin días con reservas</option>';sel.disabled=!days.length;
+  const d=S.orderDay;const acts=["#orderMail","#orderGmail","#orderCopy"];
+  if(!d){$("#orderStatus").innerHTML='<p class="sub">No hay días próximos con reservas.</p>';$("#orderTotals").innerHTML=$("#orderRows").innerHTML=$("#orderPending").innerHTML="";acts.forEach(s=>$(s).disabled=true);return}
+  const {orders,pending,booked}=orderData(d);const sent=S.sends[d];
+  acts.forEach(s=>$(s).disabled=!orders.length);
+  $("#orderMail").lastChild.textContent=sent?"Enviar de nuevo":"Enviar a Gastrosud";
+  $("#orderStatus").innerHTML=sent?'<div class="hint">'+ic("check")+'<span class="grow">Enviado por <b>'+esc(nameOf(sent.sentBy))+'</b> a las '+hhmm(sent.sentAt)+' ('+sent.orders+(sent.orders===1?" vianda":" viandas")+'). Las elecciones de ese día quedaron cerradas.</span>'+(sent.sentBy===S.me.id||S.canEdit?'<button class="btn" id="orderReopen" type="button">Reabrir</button>':"")+'</div>'
+    :(d===n.date&&n.time>="09:00"&&orders.length?'<p class="banner">Son más de las 9 y el pedido de hoy todavía no figura como enviado.</p>':"")+
+     '<p class="sub"><b>'+orders.length+' de '+booked+'</b> '+(booked===1?"persona con reserva eligió":"personas con reserva eligieron")+' vianda. '+(mealPast(d)?"La elección ya cerró.":"Se puede elegir hasta las "+cutTxt()+".")+'</p>';
+  const ro=$("#orderReopen");ro&&ro.addEventListener("click",()=>sheet('<h3>Reabrir el pedido</h3><p class="sub">El pedido del '+esc(fmtDay(d))+' deja de figurar como enviado'+(mealPast(d)?".":" y la gente puede volver a cambiar su vianda hasta las "+cutTxt()+".")+'</p><div class="row"><span class="spacer"></span><button class="btn ghost" data-close>Volver</button><button class="btn primary" id="okRo">Reabrir</button></div>',
+    close=>$("#okRo").addEventListener("click",async()=>{close();try{await store.undoSent(d);delete S.sends[d];toast("Reabriste el pedido del "+fmtDay(d)+".");renderViandas()}catch(e){toast("No pudimos reabrirlo. Solo quien lo envió o un administrador puede hacerlo.")}})));
+  $("#orderTotals").innerHTML=tally(orders,o=>o.menu==="OTRA"?"Otras":o.menu).map(([k,c])=>'<span class="badge">'+esc(k)+' <b>×'+c+'</b></span>').join("")+
+    tally(orders.filter(o=>o.drink&&o.drink!=="SIN BEBIDA"),o=>drinkText(o)).map(([k,c])=>'<span class="badge">'+esc(k)+' <b>×'+c+'</b></span>').join("");
+  $("#orderRows").innerHTML=orders.map(o=>'<tr><td><span class="person">'+avatar(o.userId,nameOf(o.userId),"sm")+'<span>'+esc(nameOf(o.userId))+'</span></span></td><td>'+esc(menuText(o))+'</td><td>'+esc(drinkText(o))+'</td></tr>').join("")||'<tr><td colspan="3" class="sub">Todavía nadie eligió vianda para este día.</td></tr>';
+  $("#orderPending").innerHTML=pending.length?'<div class="pend"><span>'+(sent||mealPast(d)?"No pidieron:":"Falta elegir:")+'</span>'+pending.map(id=>'<span class="person">'+avatar(id,nameOf(id),"sm")+esc(nameOf(id))+'</span>').join("")+'</div>':"";}
+/* live updates must not wipe the form while someone is typing */
+function renderViandas(){if(!(S.mealDraft&&$("#mealForm").contains(document.activeElement)))renderMealForm();renderOrder()}
+/* after opening the mail, ask whether it went out so the day's choices close */
+function askSent(d){if(S.sends[d])return;const n=orderData(d).orders.length;
+  sheet('<h3>¿Enviaste el pedido?</h3><p class="sub">Si lo marcás como enviado, las viandas del '+esc(fmtDay(d))+' quedan cerradas y nadie más las puede cambiar.</p><div class="row"><span class="spacer"></span><button class="btn ghost" data-close>Todavía no</button><button class="btn primary" id="okSent">Sí, lo envié</button></div>',
+    close=>$("#okSent").addEventListener("click",async()=>{close();try{await store.markSent(d,n);S.sends[d]={date:d,sentBy:S.me.id,sentAt:new Date().toISOString(),orders:n};toast("Listo. El pedido figura como enviado.");renderViandas()}
+      catch(e){toast("No pudimos marcarlo. Quizás alguien ya lo marcó como enviado.")}}))}
+let mealKey="";
+setInterval(()=>{if(S.tab!=="viandas"||document.hidden||!store)return;const n=arNow();const k=mealDays().map(mealPast).join()+"|"+n.date+"|"+(n.time>="09:00");if(k!==mealKey){mealKey=k;renderViandas()}},30000);
+
 /* ---------- render: ocupación ---------- */
 function bars(rows,cap,el){const max=Math.max(cap,...rows.map(r=>r.v),1);
   el.innerHTML=rows.map(r=>'<div class="crow"><span>'+esc(r.label)+'</span><div class="track"><div class="fill'+(r.v>cap?" over":"")+'" style="width:'+(r.v/max*100)+'%"></div><i class="cap" style="left:calc('+(cap/max*100)+'% - 1px)"></i></div><span class="val">'+r.v+' / '+cap+'</span></div>').join("")}
@@ -352,8 +456,8 @@ function renderPlan(){const cap=capacity();const k=S.cfg.officeDays;const teams=
 /* ---------- render: config ---------- */
 let cfgDraft=null;
 function renderConfig(){cfgDraft=cfgDraft||clone(S.cfg);const ed=S.canEdit;
-  $("#cfgDays").value=cfgDraft.officeDays;$("#cfgHorizon").value=cfgDraft.horizonDays;$("#cfgOffAnchor").value=cfgDraft.offAnchor||"allow";
-  ["#cfgDays","#cfgHorizon","#cfgOffAnchor","#addZone","#saveCfg"].forEach(s=>$(s).disabled=!ed);
+  $("#cfgDays").value=cfgDraft.officeDays;$("#cfgMealCutoff").value=cfgDraft.mealCutoff||"08:30";$("#cfgMealEmails").value=cfgDraft.mealEmails||"";$("#cfgHorizon").value=cfgDraft.horizonDays;$("#cfgOffAnchor").value=cfgDraft.offAnchor||"allow";
+  ["#cfgDays","#cfgHorizon","#cfgOffAnchor","#cfgMealCutoff","#cfgMealEmails","#addZone","#saveCfg"].forEach(s=>$(s).disabled=!ed);
   $("#zoneRows").innerHTML=cfgDraft.zones.map((z,i)=>'<tr data-i="'+i+'"><td><input type="text" id="zc-'+i+'" data-f="id" value="'+esc(z.id)+'" maxlength="3" style="width:64px" aria-label="Código"'+(ed?"":" disabled")+'></td><td><input type="text" id="zn-'+i+'" data-f="name" value="'+esc(z.name)+'" aria-label="Nombre"'+(ed?"":" disabled")+'></td><td><input type="text" id="zl-'+i+'" data-f="layout" value="'+esc(tablesOf(z).join(", "))+'" placeholder="ej. 8, 2, 2" style="width:120px" aria-label="Mesas y lugares de cada una"'+(ed?"":" disabled")+'></td><td><input type="number" id="zd-'+i+'" data-f="desks" min="0" max="200" value="'+(tablesOf(z).length?tablesOf(z).reduce((a,b)=>a+b,0):z.desks)+'" aria-label="Puestos"'+(ed&&!tablesOf(z).length?"":" disabled")+(tablesOf(z).length?' title="Se calcula con las mesas"':"")+'></td><td><input type="text" id="zo-'+i+'" data-f="off" value="'+esc(z.off||"")+'" placeholder="ej. 3, 7" aria-label="Puestos fuera de servicio"'+(ed?"":" disabled")+'></td><td>'+(ed?'<button class="btn ghost danger" data-del aria-label="Quitar zona">'+ic("trash-2")+'<span class="hide-sm">Quitar</span></button>':"")+'</td></tr>').join("");
   $("#zoneRows").querySelectorAll("input").forEach(inp=>inp.addEventListener("change",()=>{const z=cfgDraft.zones[+inp.closest("tr").dataset.i];const f=inp.dataset.f;if(f==="layout")setTimeout(()=>{const t=tablesOf(z);if(t.length)z.desks=t.reduce((a,b)=>a+b,0);renderConfig()});
     z[f]=f==="desks"?Math.max(0,Math.min(200,+inp.value||0)):f==="layout"?tablesOf({layout:inp.value}).join(","):f==="id"?(inp.value.toUpperCase().replace(/[^A-Z0-9]/g,"")||"Z"):inp.value}));
@@ -378,7 +482,7 @@ function renderPeople(){const box=$("#peoplePanel");box.hidden=!S.canEdit;if(!S.
 
 /* ---------- routing ---------- */
 function render(){renderMe();
-  ({reservar:renderReservar,mias:renderMias,ocupacion:renderOcupacion,plan:renderPlan,config:renderConfig})[S.tab]();}
+  ({reservar:renderReservar,mias:renderMias,viandas:renderViandas,ocupacion:renderOcupacion,plan:renderPlan,config:renderConfig})[S.tab]();}
 function setTab(t){S.tab=t;document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.tab===t;b.setAttribute("aria-selected",on);b.tabIndex=on?0:-1});
   document.querySelectorAll("section.view").forEach(s=>s.hidden=s.id!=="v-"+t);try{localStorage.setItem("alterna:tab",t)}catch(e){}render();window.scrollTo(0,0)}
 document.querySelectorAll("#tabs button").forEach(b=>b.addEventListener("click",()=>setTab(b.dataset.tab)));
@@ -395,6 +499,13 @@ $("#myName").addEventListener("change",async e=>{const n=e.target.value.trim();i
   try{await store.updatePerson(S.me.id,{full_name:n});S.me.name=n;S.names[S.me.id]=n;toast("Nombre actualizado.");render()}catch(x){toast("No pudimos guardar tu nombre. Probá de nuevo.")}});
 $("#recDesk").addEventListener("change",e=>{recDraft.deskId=e.target.value;renderRecurring()});
 $("#recSave").addEventListener("click",saveRecurring);
+$("#orderDay").addEventListener("change",e=>{S.orderDay=e.target.value;renderOrder()});
+$("#orderMail").addEventListener("click",()=>{const d=S.orderDay;const m=orderMail(d);
+  location.href="mailto:"+mealTo().join(",")+"?subject="+encodeURIComponent(m.subject)+"&body="+encodeURIComponent(m.body);setTimeout(()=>askSent(d),800)});
+$("#orderGmail").addEventListener("click",()=>{const d=S.orderDay;const m=orderMail(d);
+  window.open("https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(mealTo().join(","))+"&su="+encodeURIComponent(m.subject)+"&body="+encodeURIComponent(m.body),"_blank","noopener");setTimeout(()=>askSent(d),800)});
+$("#orderCopy").addEventListener("click",async()=>{const d=S.orderDay;const m=orderMail(d);const txt="Para: "+mealTo().join("; ")+"\nAsunto: "+m.subject+"\n\n"+m.body;
+  try{await navigator.clipboard.writeText(txt);toast("Copiamos el pedido. Pegalo en un mail a Gastrosud.");askSent(d)}catch(e){sheet('<h3>Pedido de viandas</h3><textarea readonly style="width:100%;min-height:220px">'+esc(txt)+'</textarea><div class="row"><span class="spacer"></span><button class="btn primary" data-close>Listo</button></div>')}});
 $("#compWeek").addEventListener("change",e=>{compWeek=+e.target.value;renderCompliance()});
 $("#compTeam").addEventListener("change",e=>{compTeam=e.target.value;renderCompliance()});
 $("#compCopy").addEventListener("click",async()=>{const rows=compRows().filter(r=>r.n<r.goal);const d=weekDays(compWeek);
@@ -415,8 +526,11 @@ $("#addTeam").addEventListener("click",()=>{S.draft=S.draft||clone(S.cfg.teams);
 $("#optimize").addEventListener("click",()=>{const src=S.draft||S.cfg.teams;const before=Math.max(0,...loadOf(src));S.draft=optimize(clone(src),S.cfg.officeDays);const after=Math.max(0,...loadOf(S.draft));
   renderPlan();toast(after<before?"El pico baja de "+before+" a "+after+" personas. Revisá y guardá.":"La distribución ya era óptima ("+after+" personas en el pico).")});
 ["#cfgDays","#cfgHorizon","#cfgOffAnchor"].forEach(s=>$(s).addEventListener("change",()=>{cfgDraft.officeDays=Math.max(1,Math.min(5,+$("#cfgDays").value||3));cfgDraft.horizonDays=Math.max(1,Math.min(120,+$("#cfgHorizon").value||14));cfgDraft.offAnchor=$("#cfgOffAnchor").value;renderConfig()}));
+$("#cfgMealCutoff").addEventListener("change",e=>{if(/^\d\d:\d\d/.test(e.target.value))cfgDraft.mealCutoff=e.target.value.slice(0,5)});
+$("#cfgMealEmails").addEventListener("change",e=>{cfgDraft.mealEmails=e.target.value.trim()});
 $("#addZone").addEventListener("click",()=>{cfgDraft.zones.push({id:"Z"+(cfgDraft.zones.length+1),name:"Nueva zona",desks:8,off:""});renderConfig()});
 $("#saveCfg").addEventListener("click",async()=>{const ids=cfgDraft.zones.map(z=>z.id);if(new Set(ids).size!==ids.length){toast("Cada zona necesita un código distinto.");return}
+  const mails=String(cfgDraft.mealEmails||"").split(/[;,\s]+/).filter(Boolean);if(mails.some(m=>!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m))){toast("Revisá los correos del proveedor de viandas.");return}
   const c={...cfgDraft};if(c.officeDays!==S.cfg.officeDays)c.teams=S.cfg.teams.map(t=>({...t,days:t.days.slice(0,c.officeDays).concat(COMBOS(c.officeDays)[0].filter(d=>!t.days.includes(d))).slice(0,c.officeDays).sort()}));else c.teams=S.cfg.teams;
   try{cfgDraft=null;await store.saveConfig(c);toast("Configuración guardada.");render()}catch(e){toast("No pudimos guardar la configuración. Revisá tu conexión y que seas administrador.")}});
 
@@ -468,6 +582,7 @@ async function onSession(session){
   await loadPeople();
   try{S.profile=await store.loadProfile()}catch(e){S.profile={teamId:""}}
   try{S.rec=await store.loadRecurring()}catch(e){S.rec=null}
+  store.watchMeals((list,sends)=>{S.meals=new Map(list.map(m=>[m.date+"|"+m.userId,m]));S.sends=Object.fromEntries(sends.map(x=>[x.date,x]));if(S.tab==="viandas")render()});
   store.watchConfig(onConfig);setTab(S.tab);
 }
 
