@@ -52,7 +52,9 @@ function sbStore(sb,uid){
   async function loadM(){if(!range)return;const [m,s]=await Promise.all([sb.from("meal_orders").select("date,user_id,menu,menu_other,drink").gte("date",range[0]).lte("date",range[1]),sb.from("meal_sends").select("date,sent_by,sent_at,orders").gte("date",range[0]).lte("date",range[1])]);
     if(m.error||s.error)return;mcb&&mcb(m.data.map(mapM),s.data.map(r=>({date:r.date,sentBy:r.sent_by,sentAt:r.sent_at,orders:r.orders})))}
   const deb=(f,ms)=>{let t;return()=>{clearTimeout(t);t=setTimeout(f,ms||250)}};
-  const rb=deb(loadB),rc=deb(()=>loadCfg().catch(()=>{})),rm=deb(loadM);
+  let pcb=null;
+  async function loadP(){const r=await sb.from("meal_poll_votes").select("user_id,vote");if(!r.error&&pcb)pcb(r.data)}
+  const rb=deb(loadB),rc=deb(()=>loadCfg().catch(()=>{})),rm=deb(loadM),rp=deb(loadP);
   sb.channel("alterna-live")
     .on("postgres_changes",{event:"*",schema:"public",table:"bookings"},rb)
     .on("postgres_changes",{event:"*",schema:"public",table:"zones"},rc)
@@ -61,6 +63,7 @@ function sbStore(sb,uid){
     .on("postgres_changes",{event:"*",schema:"public",table:"closures"},()=>{rc();rb()})
     .on("postgres_changes",{event:"*",schema:"public",table:"meal_orders"},rm)
     .on("postgres_changes",{event:"*",schema:"public",table:"meal_sends"},rm)
+    .on("postgres_changes",{event:"*",schema:"public",table:"meal_poll_votes"},()=>rp())
     .subscribe();
   document.addEventListener("visibilitychange",()=>{if(!document.hidden){rb();rc();rm()}});
   return{
@@ -70,6 +73,8 @@ function sbStore(sb,uid){
     async deleteMeal(date){fail(await sb.from("meal_orders").delete().eq("date",date).eq("user_id",uid));rm()},
     async markSent(date,n){fail(await sb.from("meal_sends").insert({date,orders:n}));rm()},
     async undoSent(date){fail(await sb.from("meal_sends").delete().eq("date",date));rm()},
+    watchPoll(cb){pcb=cb;loadP()},
+    async votePoll(v){fail(await sb.from("meal_poll_votes").upsert({user_id:uid,vote:v,updated_at:new Date().toISOString()}));rp()},
     watchConfig(cb){ccb=cb;loadCfg().catch(()=>toast("No pudimos cargar la oficina. Recargá la página."))},
     async claim(date,deskId){const r=await sb.from("bookings").insert({date,desk_id:deskId});
       if(r.error){if(r.error.code==="23505"){rb();return false}throw r.error}rb();return true},
@@ -415,7 +420,18 @@ function renderOrder(){const n=arNow();const sel=$("#orderDay");
   $("#orderRows").innerHTML=orders.map(o=>'<tr><td><span class="person">'+avatar(o.userId,nameOf(o.userId),"sm")+'<span>'+esc(nameOf(o.userId))+'</span></span></td><td>'+esc(menuText(o))+'</td><td>'+esc(drinkText(o))+'</td></tr>').join("")||'<tr><td colspan="3" class="sub">Todavía nadie eligió vianda para este día.</td></tr>';
   $("#orderPending").innerHTML=pending.length?'<div class="pend"><span>'+(sent||mealPast(d)?"No pidieron:":"Falta elegir:")+'</span>'+pending.map(id=>'<span class="person">'+avatar(id,nameOf(id),"sm")+esc(nameOf(id))+'</span>').join("")+'</div>':"";}
 /* live updates must not wipe the form while someone is typing */
-function renderViandas(){if(!(S.mealDraft&&$("#mealForm").contains(document.activeElement)))renderMealForm();renderOrder()}
+/* poll: should the office order meals from the app instead of the form? */
+function renderPoll(){const box=$("#pollBox");if(!box)return;const votes=S.poll||new Map();const mine=votes.has(S.me.id)?votes.get(S.me.id):null;
+  const yes=[...votes].filter(v=>v[1]).map(v=>v[0]),no=[...votes].filter(v=>!v[1]).map(v=>v[0]);const total=S.people.length||votes.size;
+  const who=ids=>ids.map(id=>nameOf(id)).sort((a,b)=>a.localeCompare(b,"es")).join(", ");
+  box.innerHTML='<b>¿Pedimos las viandas desde la app en lugar del formulario?</b>'+
+    '<div class="row"><button type="button" class="btn vote" data-vote="1" aria-pressed="'+(mine===true)+'">'+ic("check")+'Sí <span class="num">'+yes.length+'</span></button>'+
+    '<button type="button" class="btn vote" data-vote="0" aria-pressed="'+(mine===false)+'">'+ic("x")+'No <span class="num">'+no.length+'</span></button>'+
+    '<span class="sub">'+votes.size+' de '+total+(total===1?" votó":" votaron")+(mine===null?". Tu voto cuenta.":". Podés cambiar tu voto.")+'</span></div>'+
+    (S.canEdit&&votes.size?'<p class="sub">'+(yes.length?'Sí: '+esc(who(yes))+'. ':'')+(no.length?'No: '+esc(who(no))+'.':'')+'</p>':"");
+  box.querySelectorAll("[data-vote]").forEach(b=>b.addEventListener("click",async()=>{const v=b.dataset.vote==="1";
+    try{await store.votePoll(v);S.poll=new Map(votes);S.poll.set(S.me.id,v);toast(v?"Votaste que sí.":"Votaste que no.");renderPoll()}catch(e){toast("No pudimos guardar tu voto. Probá de nuevo.")}}))}
+function renderViandas(){renderPoll();if(!(S.mealDraft&&$("#mealForm").contains(document.activeElement)))renderMealForm();renderOrder()}
 /* after opening the mail, ask whether it went out so the day's choices close */
 function askSent(d){if(S.sends[d])return;const n=orderData(d).orders.length;
   sheet('<h3>¿Enviaste el pedido?</h3><p class="sub">Si lo marcás como enviado, las viandas del '+esc(fmtDay(d))+' quedan cerradas y nadie más las puede cambiar.</p><div class="row"><span class="spacer"></span><button class="btn ghost" data-close>Todavía no</button><button class="btn primary" id="okSent">Sí, lo envié</button></div>',
@@ -616,6 +632,7 @@ async function onSession(session){
   await loadPeople();
   try{S.profile=await store.loadProfile()}catch(e){S.profile={teamId:""}}
   try{S.rec=await store.loadRecurring()}catch(e){S.rec=null}
+  store.watchPoll(rows=>{S.poll=new Map(rows.map(r=>[r.user_id,r.vote]));if(S.tab==="viandas")renderPoll()});
   store.watchMeals((list,sends)=>{S.meals=new Map(list.map(m=>[m.date+"|"+m.userId,m]));S.sends=Object.fromEntries(sends.map(x=>[x.date,x]));if(S.tab==="viandas")render()});
   store.watchConfig(onConfig);setTab(S.tab);
 }
