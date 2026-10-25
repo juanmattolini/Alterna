@@ -197,8 +197,7 @@ function renderDays(){const anc=anchorIdx();let days;
   S.week=weekOf(S.selDay);
   $("#days").querySelectorAll("button.day").forEach(b=>b.addEventListener("click",()=>{S.selDay=b.dataset.day;S.week=weekOf(S.selDay);renderReservar()}));
   const need=anc.length>0&&days.some(d=>anc.includes((parse(d).getDay()+6)%7)&&inHorizon(d)&&!myOn(d)&&!closedOn(d));
-  $("#autoBtn").disabled=!S.canWrite||!need;$("#autoBtn").title=anc.length?(need?"":"Ya reservaste tus días ancla"+(S.cal?" de este mes":" de esta semana")):"Elegí tu equipo para tener días ancla";
-  $("#teamHint").hidden=!!myTeam()||!S.cfg.teams.length;}
+  $("#autoBtn").disabled=!S.canWrite||!need;$("#autoBtn").title=anc.length?(need?"":"Ya reservaste tus días ancla"+(S.cal?" de este mes":" de esta semana")):"Elegí tu equipo para tener días ancla";}
 function renderZones(){const d=S.selDay;const taken=new Map(bookingsOn(d).map(b=>[b.deskId,b]));const past=d<todayStr;const mine=myOn(d);
   const di=(parse(d).getDay()+6)%7;const anc=anchorIdx();
   $("#planTitle").textContent="Plano del "+fmtDay(d);
@@ -536,7 +535,6 @@ document.querySelectorAll("#tabs button").forEach(b=>b.addEventListener("click",
 $("#tabs").addEventListener("keydown",e=>{const tabs=[...document.querySelectorAll("#tabs button")];const i=tabs.indexOf(document.activeElement);if(i<0)return;
   let n=null;if(e.key==="ArrowRight")n=(i+1)%tabs.length;else if(e.key==="ArrowLeft")n=(i-1+tabs.length)%tabs.length;else if(e.key==="Home")n=0;else if(e.key==="End")n=tabs.length-1;
   if(n!==null){e.preventDefault();tabs[n].focus();setTab(tabs[n].dataset.tab);tabs[n].focus()}});
-$("#pickTeam").addEventListener("click",()=>{setTab("mias");$("#myTeam").focus()});
 document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>{S.cal=b.dataset.view==="cal";if(S.cal&&S.selDay)S.month=S.selDay.slice(0,7);try{localStorage.setItem("alterna:cal",S.cal?"cal":"week")}catch(e){}renderReservar()}));
 $("#prevW").addEventListener("click",()=>{if(S.cal){if(S.month>MIN_MONTH){S.month=shiftMonth(S.month,-1);S.selDay=null;renderReservar()}}else if(S.week>0){S.week--;S.selDay=null;renderReservar()}});
 $("#nextW").addEventListener("click",()=>{if(S.cal){if(S.month<MAX_MONTH){S.month=shiftMonth(S.month,1);S.selDay=null;renderReservar()}}else if(S.week<hWeeks()-1){S.week++;S.selDay=null;renderReservar()}});
